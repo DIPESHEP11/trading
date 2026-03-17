@@ -6,7 +6,7 @@ DEBUG = False
 
 # ✅ Hosts (IMPORTANT for tenants)
 ALLOWED_HOSTS = [
-    "backend.trading.zitrapps.com",
+    "backend.zitrapps.com",
     "trading.zitrapps.com",
     ".trading.zitrapps.com",
 ]
