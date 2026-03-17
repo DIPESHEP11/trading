@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { clientApi, type RegisterClientPayload } from '@/api/clientApi';
 import { planApi } from '@/api/planApi';
+import { restrictTo10Digits } from '@/utils/phone';
 import type { Plan } from '@/types';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -546,7 +547,7 @@ export default function RegisterClientPage() {
 
               <div className="form-group">
                 <label className="form-label">Phone</label>
-                <input className="form-input" placeholder="+91 98765 43210" value={adminPhone} onChange={(e) => setAdminPhone(e.target.value)} />
+                <input className="form-input" type="tel" placeholder="9876543210" maxLength={10} value={adminPhone} onChange={(e) => setAdminPhone(restrictTo10Digits(e.target.value))}  />
               </div>
 
               <div className="form-group">

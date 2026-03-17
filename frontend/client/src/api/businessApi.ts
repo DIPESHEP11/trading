@@ -222,6 +222,12 @@ export const historyApi = {
     axiosInstance.get('/history/', { params }).then((r) => r.data),
   export: (params?: { module?: string; date_from?: string; date_to?: string }) =>
     axiosInstance.get('/history/export/', { params }).then((r) => r.data),
+  /** Download Excel file — returns blob. Use with responseType: 'blob'. */
+  exportExcel: (params?: { module?: string; date_from?: string; date_to?: string }) =>
+    axiosInstance.get('/history/export/', {
+      params: { ...params, format: 'xlsx' },
+      responseType: 'blob',
+    }).then((r) => r.data),
   delete: (id: number) => axiosInstance.delete(`/history/${id}/`).then((r) => r.data),
 };
 

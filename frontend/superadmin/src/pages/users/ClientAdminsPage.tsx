@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axiosInstance from '@/api/axiosInstance';
+import { restrictTo10Digits } from '@/utils/phone';
 import type { ClientAdmin, Tenant } from '@/types';
 import toast from 'react-hot-toast';
 import { FaEye, FaEyeSlash } from 'react-icons/fa';
@@ -356,7 +357,7 @@ export default function ClientAdminsPage() {
 
               <div className="form-group">
                 <label className="form-label">Phone</label>
-                <input className="form-input" value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="+91 98765 43210" />
+                <input className="form-input" type="tel" value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: restrictTo10Digits(e.target.value) }))} placeholder="9876543210" maxLength={10} />
               </div>
 
               {/* Link to client */}

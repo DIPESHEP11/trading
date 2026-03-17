@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { stockApi, productsApi, configApi } from '@/api/businessApi';
+import { restrictTo10Digits } from '@/utils/phone';
 import type { Warehouse, WarehouseCustomField, Product, TenantConfig } from '@/types';
 import toast from 'react-hot-toast';
 
@@ -932,8 +933,8 @@ export default function InventorySettingsPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Phone Number</label>
-                  <input className="form-input" type="tel" placeholder="+91 98765 43210"
-                    value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
+                  <input className="form-input" type="tel" placeholder="9876543210" maxLength={10}
+                    value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: restrictTo10Digits(e.target.value) }))} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Email</label>

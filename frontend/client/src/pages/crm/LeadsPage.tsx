@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { crmApi } from '@/api/crmApi';
+import { restrictTo10Digits } from '@/utils/phone';
 import type { BulkAssignType, BulkAssignEmployee } from '@/api/crmApi';
 import { hrApi } from '@/api/hrApi';
 import { useAuthStore } from '@/store/authStore';
@@ -88,7 +89,10 @@ export default function LeadsPage() {
     crmApi.sources.list().then((r) => setCustomSources(r.data?.sources || [])).catch(() => {});
     crmApi.leadFormSchema.get().then((r) => {
       const d = r?.data?.data ?? r?.data;
-      if (d) { setSchema(d); setSchemaFields(d.fields || []); }
+      if (d) {
+        setSchema(d);
+        setSchemaFields(d.custom_fields ?? d.fields ?? []);
+      }
     }).catch(() => {});
   }, []);
 
@@ -143,7 +147,8 @@ export default function LeadsPage() {
   };
 
   const openAddLeadModal = () => {
-    if (schema?.fields?.length) setAddLeadSchemaData(Object.fromEntries(schema.fields.map((f) => [f.key, ''])));
+    const allFields = schema?.fields ?? [];
+    if (allFields.length) setAddLeadSchemaData(Object.fromEntries(allFields.map((f: { key: string }) => [f.key, ''])));
     setAddLeadModalOpen(true);
   };
 
@@ -268,7 +273,7 @@ export default function LeadsPage() {
   const handleSaveSchema = async () => {
     setSchemaSaving(true);
     try {
-      await crmApi.leadFormSchema.update({ fields: schemaFields });
+      await crmApi.leadFormSchema.update({ custom_fields: schemaFields });
       toast.success('Lead form format saved.');
       setSchemaModalOpen(false);
       crmApi.leadFormSchema.get().then((r) => {
@@ -280,36 +285,50 @@ export default function LeadsPage() {
       toast.error(ex?.response?.data?.message || 'Failed to save schema.');
     } finally { setSchemaSaving(false); }
   };
+  const slugifyLabel = (label: string) =>
+    label.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || `field_${Date.now()}`;
   const addSchemaField = () => setSchemaFields((prev) => [
     ...prev, { key: `field_${Date.now()}`, label: 'New field', type: 'text', required: false, order: prev.length },
   ]);
   const updateSchemaField = (idx: number, updates: Partial<LeadFormField>) =>
-    setSchemaFields((prev) => prev.map((f, i) => i === idx ? { ...f, ...updates } : f));
+    setSchemaFields((prev) => prev.map((f, i) => {
+      if (i !== idx) return f;
+      const next = { ...f, ...updates };
+      if ('label' in updates && updates.label != null) next.key = slugifyLabel(updates.label) || f.key;
+      return next;
+    }));
   const removeSchemaField = (idx: number) =>
     setSchemaFields((prev) => prev.filter((_, i) => i !== idx));
 
-  // Map schema keys → Lead core fields (same mapping as backend share form; no static defaults)
-  const NAME_KEYS = ['customer_name', 'name', 'full_name', 'client'];
-  const EMAIL_KEYS = ['email', 'mail'];
-  const PHONE_KEYS = ['phone', 'mobile', 'contact', 'contact_number', 'contact_numbe'];
-
   const extractLeadFromSchema = (data: Record<string, string>) => {
+    const coreKeys = ['name', 'phone', 'email', 'company', 'source', 'status'];
+    const custom: Record<string, string> = {};
     let name = '';
     let email = '';
     let phone = '';
+    let company = '';
+    let source = 'manual';
+    let status = 'new';
     for (const [key, val] of Object.entries(data)) {
       const v = (val ?? '').trim();
       if (!v) continue;
       const k = key.toLowerCase().replace(/\s+/g, '_');
-      if (NAME_KEYS.some((nk) => k === nk.toLowerCase())) name = v;
-      else if (EMAIL_KEYS.some((ek) => k === ek.toLowerCase())) email = v;
-      else if (PHONE_KEYS.some((pk) => k === pk.toLowerCase() || k.includes('contact'))) phone = v;
+      if (k === 'name' || k === 'customer_name' || k === 'full_name') name = v;
+      else if (k === 'email' || k === 'mail') email = v;
+      else if (k === 'phone' || k === 'mobile' || k === 'contact') phone = v;
+      else if (k === 'company') company = v;
+      else if (k === 'source') source = v;
+      else if (k === 'status') status = v;
+      else custom[key] = v;
     }
     return {
-      name: name || Object.values(data).find((v) => (v ?? '').trim()) || 'Manual entry',
+      name: name || 'Manual entry',
       email: email || undefined,
       phone: phone || undefined,
-      custom_data: data,
+      company: company || undefined,
+      source,
+      status,
+      custom_data: Object.keys(custom).length ? custom : undefined,
     };
   };
 
@@ -321,11 +340,12 @@ export default function LeadsPage() {
       const v = (val ?? '').trim();
       if (v) data[key] = v;
     }
-    if (!schema?.fields?.length) {
+    const allFields = (schema?.fields ?? []).filter((f) => f.key !== 'date');
+    if (!allFields.length) {
       toast.error('Form format not configured. Set up fields in CRM Settings.');
       return;
     }
-    const required = schema.fields.filter((f) => f.required);
+    const required = allFields.filter((f) => f.required);
     for (const f of required) {
       if (!(data[f.key] ?? '').trim()) {
         toast.error(`"${f.label}" is required.`);
@@ -334,13 +354,15 @@ export default function LeadsPage() {
     }
     setAddLeadSaving(true);
     try {
-      const { name, email, phone, custom_data } = extractLeadFromSchema(data);
+      const { name, email, phone, company, source, status, custom_data } = extractLeadFromSchema(data);
       await crmApi.leads.create({
         name,
         email,
         phone,
-        source: 'manual',
-        custom_data: Object.keys(custom_data).length ? custom_data : undefined,
+        company,
+        source,
+        status,
+        custom_data: custom_data && Object.keys(custom_data).length ? custom_data : undefined,
       });
       toast.success('Lead added.');
       setAddLeadModalOpen(false);
@@ -552,6 +574,11 @@ export default function LeadsPage() {
                           <option value="">Select...</option>
                           {(f.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
+                      ) : f.type === 'phone' ? (
+                        <input className="form-input" type="tel" maxLength={10}
+                          value={addLeadSchemaData[f.key] ?? ''}
+                          onChange={(e) => setAddLeadSchemaData((p) => ({ ...p, [f.key]: restrictTo10Digits(e.target.value) }))}
+                          required={f.required} placeholder="9876543210" />
                       ) : (
                         <input className="form-input"
                           type={f.type === 'email' ? 'email' : f.type === 'number' ? 'number' : 'text'}
@@ -595,10 +622,8 @@ export default function LeadsPage() {
               )}
               {schemaFields.map((f, idx) => (
                 <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <input className="form-input" placeholder="Key (e.g. customer_name)" value={f.key}
-                    onChange={(e) => updateSchemaField(idx, { key: e.target.value })} style={{ width: 140 }} />
-                  <input className="form-input" placeholder="Label" value={f.label}
-                    onChange={(e) => updateSchemaField(idx, { label: e.target.value })} style={{ width: 120 }} />
+                  <input className="form-input" placeholder="Field label (e.g. Customer Name)" value={f.label}
+                    onChange={(e) => updateSchemaField(idx, { label: e.target.value })} style={{ width: 200 }} />
                   <select className="form-select" value={f.type}
                     onChange={(e) => updateSchemaField(idx, { type: e.target.value as LeadFormField['type'] })} style={{ width: 110 }}>
                     {FIELD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -806,9 +831,10 @@ export default function LeadsPage() {
                     <>
                       <hr style={{ margin: '8px 0' }} />
                       <div style={{ fontWeight: 600, marginBottom: 4 }}>Additional details</div>
-                      {Object.entries(viewLead.custom_data).map(([k, v]) => (
-                        <div key={k}><strong>{k.replace(/_/g, ' ')}</strong><br />{String(v) || '—'}</div>
-                      ))}
+                      {Object.entries(viewLead.custom_data).map(([k, v]) => {
+                        const fieldLabel = (schema?.fields as { key: string; label: string }[] | undefined)?.find((f) => f.key === k)?.label ?? k.replace(/_/g, ' ');
+                        return <div key={k}><strong>{fieldLabel}</strong><br />{String(v) || '—'}</div>;
+                      })}
                     </>
                   )}
                 </div>

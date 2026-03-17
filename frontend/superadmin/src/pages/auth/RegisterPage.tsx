@@ -1,6 +1,7 @@
 import React, { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '@/api/authApi';
+import { restrictTo10Digits } from '@/utils/phone';
 import { useAuthStore } from '@/store/authStore';
 import toast from 'react-hot-toast';
 
@@ -68,8 +69,8 @@ export default function RegisterPage() {
           </div>
           <div className="form-group">
             <label className="form-label">Phone (optional)</label>
-            <input name="phone" className="form-input" placeholder="+1 234 567 8900"
-              value={form.phone} onChange={handleChange} />
+            <input name="phone" type="tel" className="form-input" placeholder="9876543210" maxLength={10}
+              value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: restrictTo10Digits(e.target.value) }))} />
           </div>
           <div className="form-group">
             <label className="form-label">Password</label>

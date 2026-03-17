@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoicesApi } from '@/api/businessApi';
+import { restrictTo10Digits } from '@/utils/phone';
 import LeadDetailsCard from '@/components/LeadDetailsCard';
 import toast from 'react-hot-toast';
 
@@ -601,8 +602,9 @@ export default function InvoicesPage() {
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label" style={{ fontSize: 11 }}>Phone</label>
-                      <input className="form-input" value={form.supplier_phone}
-                        onChange={(e) => updForm('supplier_phone', e.target.value)}
+                      <input className="form-input" type="tel" value={form.supplier_phone}
+                        onChange={(e) => updForm('supplier_phone', restrictTo10Digits(e.target.value))}
+                        placeholder="9876543210" maxLength={10}
                         style={{ margin: 0, fontSize: 12 }} />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
@@ -661,8 +663,9 @@ export default function InvoicesPage() {
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: 12 }}>Phone</label>
-                <input className="form-input" value={form.recipient_phone}
-                  onChange={(e) => updForm('recipient_phone', e.target.value)} style={{ margin: 0 }} />
+                <input className="form-input" type="tel" value={form.recipient_phone}
+                  onChange={(e) => updForm('recipient_phone', restrictTo10Digits(e.target.value))}
+                  placeholder="9876543210" maxLength={10} style={{ margin: 0 }} />
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: 12 }}>Email</label>

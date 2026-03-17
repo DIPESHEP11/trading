@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { hrApi } from '@/api/hrApi';
 import { useAuthStore } from '@/store/authStore';
+import { restrictTo10Digits } from '@/utils/phone';
 import type { Employee, EmployeeDocument, EmployeeCustomField } from '@/types';
 import toast from 'react-hot-toast';
 
@@ -664,7 +665,7 @@ export default function EmployeesPage() {
                       </div>
                       <div className="form-group">
                         <label className="form-label">Phone</label>
-                        <input className="form-input" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+91 9876543210" />
+                        <input className="form-input" type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: restrictTo10Digits(e.target.value) }))} placeholder="9876543210" maxLength={10} />
                       </div>
                       <div className="form-group">
                         <label className="form-label">Date of birth</label>
@@ -684,7 +685,7 @@ export default function EmployeesPage() {
                       </div>
                       <div className="form-group">
                         <label className="form-label">Home phone</label>
-                        <input className="form-input" value={form.home_phone} onChange={(e) => setForm((f) => ({ ...f, home_phone: e.target.value }))} />
+                        <input className="form-input" type="tel" value={form.home_phone} onChange={(e) => setForm((f) => ({ ...f, home_phone: restrictTo10Digits(e.target.value) }))} placeholder="9876543210" maxLength={10} />
                       </div>
                       <div className="form-group">
                         <label className="form-label">Emergency contact name</label>
@@ -692,7 +693,7 @@ export default function EmployeesPage() {
                       </div>
                       <div className="form-group">
                         <label className="form-label">Emergency contact phone</label>
-                        <input className="form-input" value={form.emergency_contact_phone} onChange={(e) => setForm((f) => ({ ...f, emergency_contact_phone: e.target.value }))} />
+                        <input className="form-input" type="tel" value={form.emergency_contact_phone} onChange={(e) => setForm((f) => ({ ...f, emergency_contact_phone: restrictTo10Digits(e.target.value) }))} placeholder="9876543210" maxLength={10} />
                       </div>
                     </div>
                     <div className="form-group">
@@ -701,7 +702,7 @@ export default function EmployeesPage() {
                     </div>
                     <div className="form-group">
                       <label className="form-label">Reference phone</label>
-                      <input className="form-input" value={form.reference_phone} onChange={(e) => setForm((f) => ({ ...f, reference_phone: e.target.value }))} />
+                      <input className="form-input" type="tel" value={form.reference_phone} onChange={(e) => setForm((f) => ({ ...f, reference_phone: restrictTo10Digits(e.target.value) }))} placeholder="9876543210" maxLength={10} />
                     </div>
                   </>
                 )}

@@ -5,6 +5,19 @@ import { hrApi } from '@/api/hrApi';
 import type { LeadFormSchema, LeadFormField } from '@/types';
 import toast from 'react-hot-toast';
 
+const DEFAULT_LEAD_FIELDS: LeadFormField[] = [
+  { key: 'name', label: 'Name', type: 'text', required: true, order: 0 },
+  { key: 'phone', label: 'Contact', type: 'phone', required: false, order: 1 },
+  { key: 'email', label: 'Email', type: 'email', required: false, order: 2 },
+  { key: 'address', label: 'Address', type: 'textarea', required: false, order: 3 },
+  { key: 'product_name', label: 'Product name', type: 'text', required: false, order: 4 },
+  { key: 'product_count', label: 'Product count', type: 'number', required: false, order: 5 },
+  { key: 'company', label: 'Company', type: 'text', required: false, order: 6 },
+  { key: 'source', label: 'Source', type: 'text', required: false, order: 7 },
+  { key: 'status', label: 'Status', type: 'text', required: false, order: 8 },
+  { key: 'date', label: 'Date', type: 'text', required: false, order: 9 },
+];
+
 const FIELD_TYPES: { value: LeadFormField['type']; label: string }[] = [
   { value: 'text', label: 'Text' },
   { value: 'email', label: 'Email' },
@@ -49,6 +62,8 @@ export default function CrmSettingsPage() {
   // ── Form Format ──
   const [schema, setSchema]           = useState<LeadFormSchema | null>(null);
   const [schemaFields, setSchemaFields] = useState<LeadFormField[]>([]);
+  /** Raw string for dropdown options — allows typing commas; parsed on blur */
+  const [optionsRaw, setOptionsRaw] = useState<Record<number, string>>({});
   const [schemaSaving, setSchemaSaving] = useState(false);
   const [schemaLoading, setSchemaLoading] = useState(true);
 
@@ -88,7 +103,10 @@ export default function CrmSettingsPage() {
     crmApi.leadFormSchema.get()
       .then((r) => {
         const d = r?.data?.data ?? r?.data;
-        if (d) { setSchema(d); setSchemaFields(d.fields || []); }
+        if (d) {
+          setSchema(d);
+          setSchemaFields(d.custom_fields ?? d.fields ?? []);
+        }
       })
       .catch(() => toast.error('Failed to load form schema.'))
       .finally(() => setSchemaLoading(false));
@@ -139,21 +157,41 @@ export default function CrmSettingsPage() {
   const addField = () => setSchemaFields((p) => [
     ...p, { key: `field_${Date.now()}`, label: 'New field', type: 'text', required: false, order: p.length },
   ]);
+  const slugifyLabel = (label: string) =>
+    label.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || `field_${Date.now()}`;
   const updateField = (idx: number, updates: Partial<LeadFormField>) =>
-    setSchemaFields((p) => p.map((f, i) => i === idx ? { ...f, ...updates } : f));
+    setSchemaFields((p) => p.map((f, i) => {
+      if (i !== idx) return f;
+      const next = { ...f, ...updates };
+      if ('label' in updates && updates.label != null) next.key = slugifyLabel(updates.label) || f.key;
+      return next;
+    }));
   const removeField = (idx: number) =>
     setSchemaFields((p) => p.filter((_, i) => i !== idx));
 
   const handleSaveSchema = async () => {
     setSchemaSaving(true);
     try {
-      const res = await crmApi.leadFormSchema.update({ fields: schemaFields });
+      const seen = new Set<string>();
+      const withUniqueKeys = schemaFields.map((f) => {
+        let key = f.key || slugifyLabel(f.label || '') || `field_${Date.now()}`;
+        if (seen.has(key)) {
+          let n = 2;
+          while (seen.has(`${key}_${n}`)) n++;
+          key = `${key}_${n}`;
+        }
+        seen.add(key);
+        return { ...f, key, options: (f.options ?? []).filter(Boolean) };
+      });
+      const res = await crmApi.leadFormSchema.update({ custom_fields: withUniqueKeys });
       const d = (res as any)?.data ?? res;
       if (d) setSchema(d);
+      setSchemaFields(withUniqueKeys);
       toast.success('Lead form format saved.');
     } catch (err: unknown) {
-      const ex = err as { response?: { data?: { message?: string } } };
-      toast.error(ex?.response?.data?.message || 'Failed to save schema.');
+      const ex = err as { response?: { data?: { message?: string; errors?: unknown } } };
+      const msg = ex?.response?.data?.message || (ex?.response?.data?.errors ? JSON.stringify(ex.response.data.errors) : null) || 'Failed to save schema.';
+      toast.error(msg);
     } finally { setSchemaSaving(false); }
   };
 
@@ -317,7 +355,7 @@ export default function CrmSettingsPage() {
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Setup Form Format</h3>
               <p style={{ margin: '3px 0 0', fontSize: 13, color: '#64748b' }}>
-                Define fields for the lead form, Excel template, and bulk import.
+                Default fields are always shown. Add custom fields below for the lead form, Excel template, and bulk import.
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -325,7 +363,7 @@ export default function CrmSettingsPage() {
                 📥 Download Template
               </button>
               <button className="btn btn-primary btn-sm" onClick={handleSaveSchema}
-                disabled={schemaSaving || schemaLoading || schemaFields.length === 0}>
+                disabled={schemaSaving || schemaLoading}>
                 {schemaSaving ? 'Saving…' : 'Save Format'}
               </button>
             </div>
@@ -335,31 +373,46 @@ export default function CrmSettingsPage() {
               <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>Loading…</div>
             ) : (
               <>
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase' }}>Default fields (always shown)</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {DEFAULT_LEAD_FIELDS.map((f) => (
+                      <span key={f.key} style={{ padding: '6px 12px', background: '#f1f5f9', borderRadius: 8, fontSize: 13, color: '#475569' }}>
+                        {f.label}
+                        {f.required && <span style={{ color: '#ef4444', marginLeft: 2 }}>*</span>}
+                      </span>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>These appear in Add Lead, Share Form, Excel template, and the leads table.</p>
+                </div>
+                <div style={{ marginBottom: 12, fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Custom fields</div>
                 {schemaFields.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '20px 0', color: '#94a3b8' }}>
-                    <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-                    <div style={{ fontSize: 14 }}>No fields yet. Add your first field below.</div>
+                  <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>
+                    No custom fields yet. Add fields below to collect extra info.
                   </div>
                 )}
                 {schemaFields.map((f, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center', padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#94a3b8', cursor: 'grab', fontSize: 16 }}>⠿</div>
-                    <input className="form-input" placeholder="Key" value={f.key}
-                      onChange={(e) => updateField(idx, { key: e.target.value })}
-                      style={{ width: 150, margin: 0 }} />
-                    <input className="form-input" placeholder="Label" value={f.label}
+                    <input className="form-input" placeholder="Field label (e.g. Customer name)" value={f.label}
                       onChange={(e) => updateField(idx, { label: e.target.value })}
-                      style={{ width: 130, margin: 0 }} />
+                      style={{ width: 180, margin: 0 }} />
                     <select className="form-select" value={f.type}
                       onChange={(e) => updateField(idx, { type: e.target.value as LeadFormField['type'] })}
                       style={{ width: 120, margin: 0 }}>
                       {FIELD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                     {f.type === 'select' && (
-                      <input className="form-input" placeholder="Options (comma-separated)"
-                        value={(f.options ?? []).join(', ')}
-                        onChange={(e) => updateField(idx, { options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-                        style={{ width: 200, margin: 0 }} />
+                      <input className="form-input" placeholder="Options (comma-separated, e.g. Small, Medium, Large)"
+                        value={optionsRaw[idx] ?? (f.options ?? []).join(', ')}
+                        onChange={(e) => setOptionsRaw((p) => ({ ...p, [idx]: e.target.value }))}
+                        onBlur={() => {
+                          const raw = optionsRaw[idx] ?? (f.options ?? []).join(', ');
+                          const opts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+                          updateField(idx, { options: opts });
+                          setOptionsRaw((p) => { const next = { ...p }; delete next[idx]; return next; });
+                        }}
+                        style={{ width: 240, margin: 0 }} />
                     )}
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       <input type="checkbox" checked={f.required}

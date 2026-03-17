@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoicesApi } from '@/api/businessApi';
+import { restrictTo10Digits } from '@/utils/phone';
 import toast from 'react-hot-toast';
 import type {
   DispatchSettings as DispatchSettingsType,
@@ -835,8 +836,8 @@ export default function DispatchSettingsPage() {
                   type="tel"
                   className="form-input"
                   value={partnerForm.contact_phone}
-                  onChange={(e) => setPartnerForm((f) => ({ ...f, contact_phone: e.target.value }))}
-                  placeholder="Phone number"
+                  onChange={(e) => setPartnerForm((f) => ({ ...f, contact_phone: restrictTo10Digits(e.target.value) }))}
+                  placeholder="9876543210" maxLength={10}
                 />
               </div>
               <div

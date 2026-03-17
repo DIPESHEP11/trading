@@ -9,8 +9,12 @@ from apps.crm.models import (
     Lead, Customer, LeadActivity, LeadFormSchema, LeadSource,
     CustomLeadStatus, CustomLeadSource, StatusFlowAction,
 )
+from apps.crm.constants import (
+    DEFAULT_LEAD_FIELDS, LEAD_CORE_KEYS, CUSTOM_DATA_KEYS, DISPLAY_ONLY_KEYS,
+)
 from apps.core.responses import success_response, error_response
 from apps.core.permissions import IsStaffOrAbove, IsTenantAdmin
+from apps.config.utils import log_module_history
 from .serializers import (
     LeadSerializer, LeadListSerializer, CustomerSerializer,
     LeadActivitySerializer, LeadFormSchemaSerializer,
@@ -90,6 +94,7 @@ class LeadListCreateView(generics.ListCreateAPIView):
             description=f'Lead created with status: {lead.status}',
             performed_by=request.user
         )
+        log_module_history(request, 'crm', 'create', f'Lead created: {lead.name}', 'lead', str(lead.pk))
         return success_response(data=LeadSerializer(lead).data,
                                 message='Lead created.', http_status=status.HTTP_201_CREATED)
 
@@ -235,10 +240,18 @@ class LeadDetailView(generics.RetrieveUpdateDestroyAPIView):
                 performed_by=request.user
             )
             flow_result = _execute_status_flow(lead, request.user)
+        title = f'Status: {old_status} → {lead.status}' if old_status != lead.status else f'Lead updated: {lead.name}'
+        log_module_history(request, 'crm', 'update', title, 'lead', str(lead.pk), {'old_status': old_status, 'new_status': lead.status})
         data = LeadSerializer(lead).data
         if flow_result:
             data['flow_result'] = flow_result
         return success_response(data=data, message='Lead updated.')
+
+    def destroy(self, request, *args, **kwargs):
+        lead = self.get_object()
+        name, pk = lead.name, lead.pk
+        log_module_history(request, 'crm', 'delete', f'Lead deleted: {name}', 'lead', str(pk))
+        return super().destroy(request, *args, **kwargs)
 
 
 class LeadFormSchemaView(APIView):
@@ -264,7 +277,12 @@ class LeadFormSchemaView(APIView):
             schema = self._get_schema()
         except ValueError as e:
             return error_response(str(e), http_status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        return success_response(data=LeadFormSchemaSerializer(schema).data)
+        ser = LeadFormSchemaSerializer(schema)
+        data = dict(ser.data)
+        data['default_fields'] = DEFAULT_LEAD_FIELDS
+        data['custom_fields'] = schema.fields or []
+        data['fields'] = DEFAULT_LEAD_FIELDS + (schema.fields or [])
+        return success_response(data=data)
 
     def put(self, request):
         from django.db import OperationalError
@@ -276,11 +294,15 @@ class LeadFormSchemaView(APIView):
             return error_response(f'Database error: {e}', http_status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         try:
             data = dict(request.data) if hasattr(request.data, 'items') else {}
-            serializer = LeadFormSchemaSerializer(schema, data={'fields': data.get('fields', [])}, partial=True)
+            # Save only custom_fields; default_fields are built-in
+            custom_fields = data.get('custom_fields', data.get('fields', []))
+            # Filter out default keys if client sent merged fields
+            default_keys = {f['key'] for f in DEFAULT_LEAD_FIELDS}
+            custom_fields = [f for f in custom_fields if f.get('key') not in default_keys]
+            serializer = LeadFormSchemaSerializer(schema, data={'fields': custom_fields}, partial=True)
             serializer.is_valid(raise_exception=True)
             serializer.save()
-            from apps.config.utils import log_module_history
-            log_module_history(request, 'crm', 'settings_change', 'Lead form schema updated', 'lead_form_schema', '1', {'fields_count': len(serializer.data.get('fields', []))})
+            log_module_history(request, 'crm', 'settings_change', 'Lead form schema updated', 'lead_form_schema', '1', {'fields_count': len(custom_fields)})
             return success_response(data=serializer.data, message='Lead form schema saved.')
         except Exception as e:
             return error_response(f'Could not save lead form schema: {str(e)}',
@@ -288,12 +310,14 @@ class LeadFormSchemaView(APIView):
 
 
 class LeadFormPublicView(APIView):
-    """GET /api/v1/crm/lead-form-public/ — Public schema for form (no auth)."""
+    """GET /api/v1/crm/lead-form-public/ — Public schema for form (no auth). Returns default + custom fields."""
     permission_classes = [AllowAny]
 
     def get(self, request):
         schema, _ = LeadFormSchema.objects.get_or_create(pk=1, defaults={'fields': []})
-        return success_response(data={'fields': schema.fields})
+        # Exclude display-only (date) from form; merge default + custom
+        form_fields = [f for f in DEFAULT_LEAD_FIELDS if f['key'] not in DISPLAY_ONLY_KEYS] + (schema.fields or [])
+        return success_response(data={'fields': form_fields})
 
 
 class LeadSubmitView(APIView):
@@ -303,48 +327,57 @@ class LeadSubmitView(APIView):
 
     def post(self, request):
         schema, _ = LeadFormSchema.objects.get_or_create(pk=1, defaults={'fields': []})
-        if not schema.fields:
-            return error_response('Lead form is not configured.', http_status=status.HTTP_400_BAD_REQUEST)
+        all_fields = [f for f in DEFAULT_LEAD_FIELDS if f['key'] not in DISPLAY_ONLY_KEYS] + (schema.fields or [])
 
         data = request.data if isinstance(request.data, dict) else dict(request.data)
         custom_data = {}
         name = ''
         email = ''
         phone = ''
+        company = ''
 
-        for field_def in schema.fields:
+        for field_def in all_fields:
             key = field_def.get('key')
-            if not key:
+            if not key or key in DISPLAY_ONLY_KEYS:
                 continue
             val = data.get(key, '')
             if isinstance(val, list):
                 val = val[0] if val else ''
-            custom_data[key] = val
+            val = str(val).strip() if val else ''
 
-            # Map common keys to core Lead fields (client-defined keys, no static defaults)
-            if key in ('customer_name', 'name', 'full_name', 'client'):
-                name = str(val) if val else name
-            elif key in ('email', 'mail'):
-                email = str(val) if val else email
-            elif key in ('phone', 'mobile', 'contact', 'contact_number', 'contact_numbe'):
-                phone = str(val) if val else phone
+            if key in LEAD_CORE_KEYS:
+                if key == 'name':
+                    name = val or name
+                elif key == 'email':
+                    email = val or email
+                elif key == 'phone':
+                    phone = val or phone
+                elif key == 'company':
+                    company = val or company
+                # source, status: form submit uses fixed values
+            else:
+                if val:
+                    custom_data[key] = val
 
-        if not name and 'name' in data:
-            name = str(data.get('name', ''))
-        if not email and 'email' in data:
-            email = str(data.get('email', ''))
-        if not phone and 'phone' in data:
-            phone = str(data.get('phone', ''))
+        # Fallbacks for alternate keys
+        if not name:
+            name = (data.get('customer_name') or data.get('full_name') or data.get('client') or '').strip()
+        if not email:
+            email = (data.get('mail') or '').strip()
+        if not phone:
+            phone = (data.get('mobile') or data.get('contact') or data.get('contact_number') or '').strip()
 
         lead = Lead.objects.create(
             source=LeadSource.FORM,
             status='new',
             name=name or 'Form submission',
-            email=email,
-            phone=phone,
+            email=email or '',
+            phone=phone or '',
+            company=company or '',
             custom_data=custom_data,
         )
         _auto_link_customer(lead)
+        log_module_history(request, 'crm', 'create', f'Lead from form: {lead.name}', 'lead', str(lead.pk))
         return success_response(
             data={'id': lead.id},
             message='Thank you! Your submission has been received.',
@@ -358,12 +391,9 @@ class LeadFormTemplateView(APIView):
 
     def get(self, request):
         schema, _ = LeadFormSchema.objects.get_or_create(pk=1, defaults={'fields': []})
-        fields = schema.fields or []
-        if not fields:
-            return error_response(
-                'Configure form format in CRM Settings first. Add fields in Setup Form Format.',
-                http_status=status.HTTP_400_BAD_REQUEST,
-            )
+        # Default + custom fields; exclude date (display-only)
+        form_defaults = [f for f in DEFAULT_LEAD_FIELDS if f['key'] != 'date']
+        fields = form_defaults + (schema.fields or [])
         fields = sorted(fields, key=lambda f: f.get('order', 999))
         seen = set()
         ordered = []
@@ -400,12 +430,9 @@ class LeadFormImportView(APIView):
             return error_response('File must be Excel (.xlsx).', http_status=status.HTTP_400_BAD_REQUEST)
 
         schema, _ = LeadFormSchema.objects.get_or_create(pk=1, defaults={'fields': []})
-        fields = schema.fields or []
-        if not fields:
-            return error_response(
-                'Configure form format in CRM Settings first. Add fields in Setup Form Format.',
-                http_status=status.HTTP_400_BAD_REQUEST,
-            )
+        # Default + custom column names for import
+        form_defaults = [f for f in DEFAULT_LEAD_FIELDS if f['key'] != 'date']
+        all_field_keys = {f['key'] for f in form_defaults} | {f.get('key') for f in (schema.fields or []) if f.get('key')}
 
         try:
             from openpyxl import load_workbook
@@ -422,7 +449,7 @@ class LeadFormImportView(APIView):
         if len(rows) > MAX_ROWS:
             return error_response(f'Maximum {MAX_ROWS} rows allowed.', http_status=status.HTTP_400_BAD_REQUEST)
 
-        core_keys = {'name', 'email', 'phone'}
+        core_keys = {'name', 'email', 'phone', 'company', 'source', 'status'}
         created = 0
         errors = []
         for i, row in enumerate(rows):
@@ -437,16 +464,20 @@ class LeadFormImportView(APIView):
             name = (data.get('name') or data.get('customer_name') or data.get('client') or '').strip()
             email = (data.get('email') or data.get('mail') or '').strip()
             phone = (data.get('phone') or data.get('mobile') or data.get('contact') or data.get('contact_number') or data.get('contact_numbe') or '').strip()
+            company = (data.get('company') or '').strip()
+            source_val = (data.get('source') or 'excel').strip() or 'excel'
+            status_val = (data.get('status') or 'new').strip() or 'new'
             custom_data = {k: v for k, v in data.items() if k not in core_keys and v}
             if not name:
                 name = email or phone or f'Row {row_num}'
             try:
                 lead = Lead.objects.create(
-                    source=LeadSource.EXCEL,
-                    status='new',
+                    source=source_val,
+                    status=status_val,
                     name=name,
                     email=email,
                     phone=phone,
+                    company=company,
                     custom_data=custom_data,
                 )
                 _auto_link_customer(lead)
@@ -454,6 +485,8 @@ class LeadFormImportView(APIView):
             except Exception as e:
                 errors.append({'row': row_num, 'message': str(e)})
 
+        if created:
+            log_module_history(request, 'crm', 'create', f'Bulk import: {created} leads', 'lead', '', {'count': created})
         return success_response(data={'created': created, 'errors': errors}, message=f'Imported {created} leads.')
 
 

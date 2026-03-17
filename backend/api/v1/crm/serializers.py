@@ -61,9 +61,9 @@ class LeadListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lead
-        fields = ['id', 'name', 'phone', 'email', 'source', 'status',
+        fields = ['id', 'name', 'phone', 'email', 'company', 'source', 'status',
                   'assigned_to', 'assigned_to_name',
-                  'customer_id', 'customer_name', 'created_at']
+                  'customer_id', 'customer_name', 'custom_data', 'created_at']
 
     def get_assigned_to_name(self, obj):
         return obj.assigned_to.full_name if obj.assigned_to else None

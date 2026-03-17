@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoicesApi } from '@/api/businessApi';
+import { restrictTo10Digits } from '@/utils/phone';
 import toast from 'react-hot-toast';
 
 interface SerialRange { from: number; to: number; current?: number }
@@ -604,8 +605,9 @@ export default function InvoiceSettingsPage() {
               </div>
               <div className="form-group">
                 <label className="form-label">Phone</label>
-                <input className="form-input" value={settings.supplier_phone}
-                  onChange={(e) => upd('supplier_phone', e.target.value)} style={inputStyle} />
+                <input className="form-input" type="tel" value={settings.supplier_phone}
+                  onChange={(e) => upd('supplier_phone', restrictTo10Digits(e.target.value))}
+                  placeholder="9876543210" maxLength={10} style={inputStyle} />
               </div>
               <div className="form-group">
                 <label className="form-label">Email</label>

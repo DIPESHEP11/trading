@@ -129,6 +129,25 @@ export default function HistoryPage() {
     }
   };
 
+  const handleDownloadExcel = async () => {
+    try {
+      const params: Record<string, string> = {};
+      if (moduleFilter) params.module = moduleFilter;
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+      const blob = await historyApi.exportExcel(params);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `module_history_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Excel downloaded.');
+    } catch {
+      toast.error('Failed to export Excel.');
+    }
+  };
+
   return (
     <div>
       <div className="page-header" style={{ marginBottom: 24 }}>
@@ -159,6 +178,9 @@ export default function HistoryPage() {
           <button type="button" className="btn btn-primary" onClick={handleDownloadPDF} disabled={history.length === 0}>
             Download PDF
           </button>
+          <button type="button" className="btn btn-secondary" onClick={handleDownloadExcel} disabled={history.length === 0}>
+            Download Excel
+          </button>
         </div>
       </div>
 
@@ -167,7 +189,10 @@ export default function HistoryPage() {
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading…</div>
         ) : history.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>
-            No history records. Activity will appear here when settings or data change.
+            <p>No history records for the selected filters.</p>
+            <p style={{ marginTop: 8, fontSize: 13 }}>
+              Try selecting <strong>All Modules</strong> or broadening the date range. History appears when leads are created, updated, or deleted, or when settings change.
+            </p>
           </div>
         ) : (
           <div className="table-wrapper">

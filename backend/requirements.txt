@@ -1,0 +1,4 @@
+# Backend dependencies - install with: pip install -r requirements.txt
+# For local dev (includes base + dev tools):
+-r requirements/base.txt
+-r requirements/development.txt

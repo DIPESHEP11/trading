@@ -29,7 +29,7 @@ export const crmApi = {
   },
   leadFormSchema: {
     get: () => axiosInstance.get('/crm/lead-form-schema/').then((r) => r.data),
-    update: (data: { fields: LeadFormSchema['fields'] }) =>
+    update: (data: { fields?: LeadFormSchema['fields']; custom_fields?: LeadFormSchema['fields'] }) =>
       axiosInstance.put('/crm/lead-form-schema/', data).then((r) => r.data),
     downloadTemplate: () =>
       axiosInstance.get('/crm/lead-form-schema/template/', { responseType: 'blob' }).then((r) => {

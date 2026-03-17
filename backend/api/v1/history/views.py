@@ -1,7 +1,9 @@
 """
 History API — Client admin only.
 List, export, and delete module history. Deletion creates permanent AuditSummary.
+Export supports JSON (PDF) and Excel format.
 """
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.views import APIView
@@ -76,11 +78,11 @@ class ModuleHistoryDeleteView(APIView):
 
 
 class ModuleHistoryExportView(APIView):
-    """GET /api/v1/history/export/ — Export history as JSON for PDF generation (same filters as list)."""
+    """GET /api/v1/history/export/ — Export history. ?format=xlsx for Excel; otherwise JSON for PDF."""
     permission_classes = [IsTenantAdmin]
 
     def get(self, request):
-        qs = ModuleHistory.objects.filter(deleted_at__isnull=True).order_by('-created_at')
+        qs = ModuleHistory.objects.filter(deleted_at__isnull=True).select_related('performed_by').order_by('-created_at')
         module = request.query_params.get('module')
         date_from = request.query_params.get('date_from')
         date_to = request.query_params.get('date_to')
@@ -105,4 +107,47 @@ class ModuleHistoryExportView(APIView):
                 'performed_by_email': h.performed_by_email or (h.performed_by.email if h.performed_by else ''),
                 'created_at': h.created_at.isoformat() if h.created_at else None,
             })
+
+        if request.query_params.get('format') == 'xlsx':
+            from django.http import HttpResponse
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, Alignment
+            from openpyxl.utils import get_column_letter
+            from datetime import datetime
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = 'Module History'
+
+            headers = ['Date', 'Module', 'Action', 'Entity Type', 'Entity ID', 'Title', 'Performed By', 'Email']
+            for col, h in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=h)
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center', wrap_text=True)
+            for row_idx, h in enumerate(data, 2):
+                created = h['created_at'][:16].replace('T', ' ') if h.get('created_at') else '—'
+                ws.cell(row=row_idx, column=1, value=created)
+                ws.cell(row=row_idx, column=2, value=h.get('module', ''))
+                ws.cell(row=row_idx, column=3, value=h.get('action', ''))
+                ws.cell(row=row_idx, column=4, value=h.get('entity_type', ''))
+                ws.cell(row=row_idx, column=5, value=h.get('entity_id', ''))
+                ws.cell(row=row_idx, column=6, value=h.get('title', ''))
+                ws.cell(row=row_idx, column=7, value=h.get('performed_by', ''))
+                ws.cell(row=row_idx, column=8, value=h.get('performed_by_email', ''))
+
+            for col in range(1, len(headers) + 1):
+                ws.column_dimensions[get_column_letter(col)].width = max(12, len(headers[col - 1]) + 2)
+
+            from io import BytesIO
+            buffer = BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            fname = f'module_history_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            )
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            return response
+
         return success_response(data={'history': data})
