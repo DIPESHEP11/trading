@@ -3,6 +3,24 @@ import sentry_sdk
 
 DEBUG = False
 
+# Production domain: trading.zitrapps.com
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='trading.zitrapps.com,www.trading.zitrapps.com',
+    cast=lambda v: [s.strip() for s in v.split(',')]
+)
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='https://trading.zitrapps.com,https://www.trading.zitrapps.com',
+    cast=lambda v: [s.strip() for s in v.split(',')]
+)
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='https://trading.zitrapps.com,https://www.trading.zitrapps.com',
+    cast=lambda v: [s.strip() for s in v.split(',')]
+)
+FRONTEND_CLIENT_URL = config('FRONTEND_CLIENT_URL', default='https://trading.zitrapps.com')
+
 CORS_ALLOW_ALL_ORIGINS = False
 
 # Security headers
