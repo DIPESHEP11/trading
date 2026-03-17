@@ -1,0 +1,12 @@
+{
+  "include": ["."],
+  "extraPaths": [".", "./apps", "./api"],
+  "venvPath": ".",
+  "venv": "venv",
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": true,
+  "reportMissingModuleSource": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false
+}
