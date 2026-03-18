@@ -1,0 +1,19 @@
+# Systemd service for Traiding Gunicorn
+# Copy to: /etc/systemd/system/traiding.service
+# Enable: sudo systemctl daemon-reload && sudo systemctl enable traiding
+# Start:  sudo systemctl start traiding
+
+[Unit]
+Description=Traiding Gunicorn daemon
+After=network.target postgresql.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/traiding/backend
+ExecStart=/var/www/traiding/backend/venv/bin/gunicorn config.wsgi:application -c gunicorn_config.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

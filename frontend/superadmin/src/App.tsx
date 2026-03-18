@@ -8,6 +8,7 @@ import '@/styles/index.css';
 // Auth pages
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
+import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
 
 // Dashboard
 import DashboardLayout from '@/components/Layout/DashboardLayout';
@@ -23,6 +24,7 @@ import PlansPage from '@/pages/plans/PlansPage';
 
 // Client Admins (Superadmin)
 import ClientAdminsPage from '@/pages/users/ClientAdminsPage';
+import SettingsPage from '@/pages/settings/SettingsPage';
 
 // ─── Auth Guards ────────────────────────────────────────────────────────────
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -63,6 +65,7 @@ export default function App() {
         {/* Public routes */}
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+        <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
 
         {/* Protected dashboard routes */}
         <Route
@@ -83,6 +86,9 @@ export default function App() {
 
                   {/* Client Admins */}
                   <Route path="users" element={<ClientAdminsPage />} />
+
+                  {/* Settings */}
+                  <Route path="settings" element={<SettingsPage />} />
 
                   {/* Catch-all within dashboard */}
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
