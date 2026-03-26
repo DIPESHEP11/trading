@@ -116,6 +116,12 @@ export interface Lead {
   created_at: string;
 }
 
+export interface CrmPhoneRegexPreset {
+  id: string;
+  label: string;
+  pattern: string;
+}
+
 export interface LeadFormField {
   key: string;
   label: string;
@@ -123,11 +129,20 @@ export interface LeadFormField {
   required?: boolean;
   order?: number;
   options?: string[];
+  /** When type is phone: full-string regex (e.g. ^[0-9]{10}$ or E.164-style pattern) */
+  pattern?: string;
+  /** Selected preset id from tenant crm_phone_regex_presets (set in superadmin) */
+  phone_preset_id?: string;
 }
 
 export interface LeadFormSchema {
   id?: number;
   fields: LeadFormField[];
+  /** Merged built-in fields (API); includes resolved pattern for phone when a preset is chosen */
+  default_fields?: LeadFormField[];
+  custom_fields?: LeadFormField[];
+  /** Presets from superadmin; client admin picks one for Contact validation */
+  phone_regex_presets?: CrmPhoneRegexPreset[];
   is_locked?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -322,6 +337,8 @@ export interface DispatchSticker {
   tracking_url: string;
   from_name?: string;
   from_address?: string;
+  from_name_override?: string;
+  from_address_override?: string;
   to_name?: string;
   to_address?: string;
   product_names?: string[];
@@ -339,6 +356,7 @@ export interface DispatchSettings {
   id: number;
   flow_after_dispatch: FlowAfterDispatch;
   default_tracking_status?: DefaultTrackingStatus;
+  from_address_options?: { label?: string; name: string; address: string }[];
   created_at?: string;
   updated_at?: string;
 }
@@ -413,7 +431,9 @@ export interface Employee {
   first_name: string;
   last_name: string;
   phone: string;
-  role: string;
+  role: number | null;   // Custom Role id (from API)
+  role_name?: string | null;
+  user_role?: string;   // member | staff (legacy)
   photo: string | null;
   date_of_birth: string | null;
   gender: string;

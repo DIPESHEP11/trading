@@ -203,7 +203,7 @@ class DispatchStickerSerializer(serializers.ModelSerializer):
 class DispatchStickerDetailSerializer(serializers.ModelSerializer):
     """Dispatch sticker with full invoice details for list/detail and PDF."""
     invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
-    from_name = serializers.CharField(source='invoice.supplier_name', read_only=True)
+    from_name = serializers.SerializerMethodField()
     from_address = serializers.SerializerMethodField()
     to_name = serializers.CharField(source='invoice.recipient_name', read_only=True)
     to_address = serializers.SerializerMethodField()
@@ -225,9 +225,33 @@ class DispatchStickerDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_from_address(self, obj):
+        has_override_cols = bool(self.context.get('has_sticker_override_columns', True))
+        if has_override_cols:
+            try:
+                if obj.from_address_override:
+                    return obj.from_address_override
+            except Exception:
+                pass
         inv = obj.invoice
-        parts = [inv.supplier_address, inv.supplier_city or '', inv.supplier_state or '', inv.supplier_pincode or '']
+        # Some older invoice rows/models may not have supplier_city/supplier_pincode.
+        # Use getattr fallback to avoid breaking dispatch list serialization.
+        parts = [
+            getattr(inv, 'supplier_address', '') or '',
+            getattr(inv, 'supplier_city', '') or '',
+            getattr(inv, 'supplier_state', '') or '',
+            getattr(inv, 'supplier_pincode', '') or '',
+        ]
         return ', '.join(p for p in parts if p).strip() or '—'
+
+    def get_from_name(self, obj):
+        has_override_cols = bool(self.context.get('has_sticker_override_columns', True))
+        if has_override_cols:
+            try:
+                if obj.from_name_override:
+                    return obj.from_name_override
+            except Exception:
+                pass
+        return getattr(obj.invoice, 'supplier_name', '') or '—'
 
     def get_to_address(self, obj):
         inv = obj.invoice
@@ -348,7 +372,7 @@ class InvoiceFlowActionSerializer(serializers.ModelSerializer):
 class DispatchSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = DispatchSettings
-        fields = ['id', 'flow_after_dispatch', 'default_tracking_status', 'created_at', 'updated_at']
+        fields = ['id', 'flow_after_dispatch', 'default_tracking_status', 'from_address_options', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 

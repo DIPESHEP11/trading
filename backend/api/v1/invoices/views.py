@@ -57,6 +57,23 @@ def _get_or_create_dispatch_settings(tenant):
     return settings
 
 
+def _has_dispatch_from_options_column():
+    """Return True if tenant schema has dispatch from_address_options column."""
+    table_name = DispatchSettings._meta.db_table
+    with connection.cursor() as cursor:
+        cols = connection.introspection.get_table_description(cursor, table_name)
+    return any(getattr(c, 'name', None) == 'from_address_options' for c in cols)
+
+
+def _has_dispatch_sticker_override_columns():
+    """Return True if tenant schema has dispatch sticker override columns."""
+    table_name = DispatchSticker._meta.db_table
+    with connection.cursor() as cursor:
+        cols = connection.introspection.get_table_description(cursor, table_name)
+    names = {getattr(c, 'name', None) for c in cols}
+    return 'from_name_override' in names and 'from_address_override' in names
+
+
 # ── Reference data endpoints ─────────────────────────────────────────────────
 
 class IndianStatesView(APIView):
@@ -598,16 +615,28 @@ class DispatchListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsStaffOrAbove]
 
     def get_queryset(self):
-        return DispatchSticker.objects.all().select_related('invoice').prefetch_related('invoice__line_items')
+        qs = DispatchSticker.objects.all().select_related('invoice').prefetch_related('invoice__line_items')
+        if not _has_dispatch_sticker_override_columns():
+            qs = qs.defer('from_name_override', 'from_address_override')
+        return qs
 
     def get_serializer_class(self):
         return DispatchStickerDetailSerializer if self.request.method == 'GET' else DispatchStickerSerializer
 
     def list(self, request, *args, **kwargs):
-        data = DispatchStickerDetailSerializer(self.get_queryset(), many=True).data
+        data = DispatchStickerDetailSerializer(
+            self.get_queryset(),
+            many=True,
+            context={'has_sticker_override_columns': _has_dispatch_sticker_override_columns()},
+        ).data
         return success_response(data={'dispatch': data, 'count': len(data)})
 
     def create(self, request, *args, **kwargs):
+        if not _has_dispatch_sticker_override_columns():
+            return error_response(
+                'Dispatch schema update pending for this tenant. Please run tenant migrations and try again.',
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = DispatchStickerSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         sticker = serializer.save(created_by=request.user, dispatched_at=timezone.now())
@@ -622,10 +651,16 @@ class DispatchStickerDetailView(APIView):
 
     def get(self, request, pk):
         try:
-            sticker = DispatchSticker.objects.select_related('invoice').prefetch_related('invoice__line_items').get(pk=pk)
+            qs = DispatchSticker.objects.select_related('invoice').prefetch_related('invoice__line_items')
+            if not _has_dispatch_sticker_override_columns():
+                qs = qs.defer('from_name_override', 'from_address_override')
+            sticker = qs.get(pk=pk)
         except DispatchSticker.DoesNotExist:
             return error_response('Dispatch sticker not found.', http_status=404)
-        return success_response(data=DispatchStickerDetailSerializer(sticker).data)
+        return success_response(data=DispatchStickerDetailSerializer(
+            sticker,
+            context={'has_sticker_override_columns': _has_dispatch_sticker_override_columns()},
+        ).data)
 
 
 class DispatchStickerPDFView(APIView):
@@ -634,7 +669,10 @@ class DispatchStickerPDFView(APIView):
 
     def get(self, request, pk):
         try:
-            sticker = DispatchSticker.objects.select_related('invoice').prefetch_related('invoice__line_items').get(pk=pk)
+            qs = DispatchSticker.objects.select_related('invoice').prefetch_related('invoice__line_items')
+            if not _has_dispatch_sticker_override_columns():
+                qs = qs.defer('from_name_override', 'from_address_override')
+            sticker = qs.get(pk=pk)
         except DispatchSticker.DoesNotExist:
             return error_response('Dispatch sticker not found.', http_status=404)
         inv_settings = _get_or_create_settings(request.tenant)
@@ -678,13 +716,37 @@ class DispatchSettingsView(APIView):
                 http_status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            settings = _get_or_create_dispatch_settings(tenant)
+            has_from_options = _has_dispatch_from_options_column()
+            if has_from_options:
+                settings = _get_or_create_dispatch_settings(tenant)
+                return success_response(data=DispatchSettingsSerializer(settings).data)
+
+            # Compatibility mode for tenants where new migration is not applied yet.
+            settings = DispatchSettings.objects.only(
+                'id', 'tenant', 'flow_after_dispatch', 'default_tracking_status', 'created_at', 'updated_at'
+            ).filter(tenant=tenant).first()
+            if settings is None:
+                return success_response(data={
+                    'id': None,
+                    'flow_after_dispatch': 'notify_only',
+                    'default_tracking_status': '',
+                    'from_address_options': [],
+                    'created_at': None,
+                    'updated_at': None,
+                })
+            return success_response(data={
+                'id': settings.id,
+                'flow_after_dispatch': settings.flow_after_dispatch,
+                'default_tracking_status': settings.default_tracking_status,
+                'from_address_options': [],
+                'created_at': settings.created_at,
+                'updated_at': settings.updated_at,
+            })
         except Exception as e:
             return error_response(
                 f'Could not load dispatch settings: {str(e)}. Ensure tenant migrations are run.',
                 http_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        return success_response(data=DispatchSettingsSerializer(settings).data)
 
     def put(self, request):
         self.permission_classes = [IsTenantAdmin]
@@ -695,13 +757,36 @@ class DispatchSettingsView(APIView):
                 'Tenant not identified. Use your tenant domain or ensure you are logged in.',
                 http_status=status.HTTP_400_BAD_REQUEST,
             )
-        settings = _get_or_create_dispatch_settings(tenant)
+        has_from_options = _has_dispatch_from_options_column()
+        if has_from_options:
+            settings = _get_or_create_dispatch_settings(tenant)
+            if settings is None:
+                return error_response('Dispatch settings not available.', http_status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            serializer = DispatchSettingsSerializer(settings, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return success_response(data=serializer.data, message='Dispatch settings updated.')
+
+        # Compatibility mode: ignore from_address_options when column does not exist yet.
+        settings = DispatchSettings.objects.only(
+            'id', 'tenant', 'flow_after_dispatch', 'default_tracking_status', 'created_at', 'updated_at'
+        ).filter(tenant=tenant).first()
         if settings is None:
-            return error_response('Dispatch settings not available.', http_status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        serializer = DispatchSettingsSerializer(settings, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return success_response(data=serializer.data, message='Dispatch settings updated.')
+            return error_response('Dispatch settings not found for this tenant. Run tenant migrations first.', http_status=400)
+
+        if 'flow_after_dispatch' in request.data:
+            settings.flow_after_dispatch = request.data.get('flow_after_dispatch') or settings.flow_after_dispatch
+        if 'default_tracking_status' in request.data:
+            settings.default_tracking_status = request.data.get('default_tracking_status') or ''
+        settings.save(update_fields=['flow_after_dispatch', 'default_tracking_status', 'updated_at'])
+        return success_response(data={
+            'id': settings.id,
+            'flow_after_dispatch': settings.flow_after_dispatch,
+            'default_tracking_status': settings.default_tracking_status,
+            'from_address_options': [],
+            'created_at': settings.created_at,
+            'updated_at': settings.updated_at,
+        }, message='Dispatch settings updated.')
 
 
 class CourierPartnerListCreateView(APIView):

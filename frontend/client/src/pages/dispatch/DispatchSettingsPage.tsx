@@ -70,6 +70,7 @@ function getFlowActionsList(res: unknown): DispatchFlowAction[] {
 }
 
 export default function DispatchSettingsPage() {
+  const [fromAddressOptions, setFromAddressOptions] = useState<{ label: string; name: string; address: string }[]>([]);
   const [settings, setSettings] = useState<DispatchSettingsType | null>(null);
   const [partners, setPartners] = useState<CourierPartner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,6 +128,14 @@ export default function DispatchSettingsPage() {
           setSettings(settingsData);
           setFlow(settingsData.flow_after_dispatch);
           setTrackingStatus((settingsData.default_tracking_status as DefaultTrackingStatus) ?? '');
+          const fromOptions = Array.isArray(settingsData.from_address_options)
+            ? settingsData.from_address_options.map((opt) => ({
+                label: String(opt?.label ?? ''),
+                name: String(opt?.name ?? ''),
+                address: String(opt?.address ?? ''),
+              }))
+            : [];
+          setFromAddressOptions(fromOptions);
         }
       } else {
         if (isNoDataError(settingsResult.reason)) hadNoDataResponse = true;
@@ -184,12 +193,19 @@ export default function DispatchSettingsPage() {
   const handleSaveFlow = async () => {
     setSavingFlow(true);
     try {
-      const payload: { flow_after_dispatch: FlowAfterDispatch; default_tracking_status?: string } = {
+      const payload: { flow_after_dispatch: FlowAfterDispatch; default_tracking_status?: string; from_address_options?: { label?: string; name: string; address: string }[] } = {
         flow_after_dispatch: flow,
       };
       if (showTrackingStatus) {
         payload.default_tracking_status = trackingStatus || undefined;
       }
+      payload.from_address_options = fromAddressOptions
+        .map((opt) => ({
+          label: (opt.label || '').trim(),
+          name: (opt.name || '').trim(),
+          address: (opt.address || '').trim(),
+        }))
+        .filter((opt) => opt.name && opt.address);
       const res = await invoicesApi.dispatch.settings.update(payload);
       const data = getSettingsData(res);
       if (data) setSettings(data);
@@ -467,6 +483,51 @@ export default function DispatchSettingsPage() {
                 </p>
               </div>
             )}
+            <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: 12 }}>
+              <label className="form-label" style={{ marginBottom: 8, display: 'block' }}>From addresses (for dispatch sticker)</label>
+              <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Add multiple sender addresses. While creating dispatch, user can tick/select one address.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {fromAddressOptions.map((opt, idx) => (
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.3fr auto', gap: 8, alignItems: 'center' }}>
+                    <input
+                      className="form-input"
+                      placeholder="Label (optional)"
+                      value={opt.label}
+                      onChange={(e) => setFromAddressOptions((prev) => prev.map((p, i) => (i === idx ? { ...p, label: e.target.value } : p)))}
+                    />
+                    <input
+                      className="form-input"
+                      placeholder="From name"
+                      value={opt.name}
+                      onChange={(e) => setFromAddressOptions((prev) => prev.map((p, i) => (i === idx ? { ...p, name: e.target.value } : p)))}
+                    />
+                    <input
+                      className="form-input"
+                      placeholder="From address"
+                      value={opt.address}
+                      onChange={(e) => setFromAddressOptions((prev) => prev.map((p, i) => (i === idx ? { ...p, address: e.target.value } : p)))}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setFromAddressOptions((prev) => prev.filter((_, i) => i !== idx))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ marginTop: 10 }}
+                onClick={() => setFromAddressOptions((prev) => [...prev, { label: '', name: '', address: '' }])}
+              >
+                + Add from address
+              </button>
+            </div>
             <div>
               <button
                 type="button"

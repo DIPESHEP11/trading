@@ -150,7 +150,7 @@ export const invoicesApi = {
       axiosInstance.get(`/invoices/dispatch/${id}/qr/`, { responseType: 'blob' }).then((r) => r.data),
     settings: {
       get: () => axiosInstance.get('/invoices/dispatch/settings/').then((r) => r.data),
-      update: (data: { flow_after_dispatch?: string; default_tracking_status?: string }) =>
+      update: (data: { flow_after_dispatch?: string; default_tracking_status?: string; from_address_options?: { label?: string; name: string; address: string }[] }) =>
         axiosInstance.put('/invoices/dispatch/settings/', data).then((r) => r.data),
     },
     statuses: {

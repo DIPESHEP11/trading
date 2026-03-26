@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoicesApi } from '@/api/businessApi';
 import toast from 'react-hot-toast';
-import type { DispatchSticker } from '@/types';
+import type { DispatchSettings, DispatchSticker } from '@/types';
 
 const COURIER_OPTIONS = [
   { value: 'delhivery', label: 'Delhivery' },
@@ -57,6 +57,9 @@ export default function DispatchPage() {
   const [creating, setCreating] = useState(false);
   const [invoices, setInvoices] = useState<{ id: number; invoice_number: string; recipient_name: string }[]>([]);
   const [createForm, setCreateForm] = useState({ invoice_id: '', courier: 'delhivery', courier_name_custom: '', awb_number: '' });
+  const [dispatchSettings, setDispatchSettings] = useState<DispatchSettings | null>(null);
+  const [useFromAddressOption, setUseFromAddressOption] = useState(false);
+  const [selectedFromAddressIndex, setSelectedFromAddressIndex] = useState('0');
 
   useEffect(() => {
     fetchList();
@@ -64,6 +67,10 @@ export default function DispatchPage() {
 
   useEffect(() => {
     if (showCreate) {
+      invoicesApi.dispatch.settings.get().then((res) => {
+        const data = (res as { data?: DispatchSettings }).data ?? (res as DispatchSettings);
+        setDispatchSettings(data || null);
+      }).catch(() => setDispatchSettings(null));
       invoicesApi
         .list({})
         .then((r: { data?: { invoices?: { id: number; invoice_number: string; recipient_name: string }[] } }) => {
@@ -93,6 +100,8 @@ export default function DispatchPage() {
       toast.error('Select an invoice.');
       return;
     }
+    const fromOptions = Array.isArray(dispatchSettings?.from_address_options) ? dispatchSettings!.from_address_options : [];
+    const selectedOption = useFromAddressOption ? fromOptions[Number(selectedFromAddressIndex)] : null;
     setCreating(true);
     try {
       await invoicesApi.dispatch.create({
@@ -100,10 +109,14 @@ export default function DispatchPage() {
         courier: createForm.courier,
         courier_name_custom: createForm.courier === 'custom' ? createForm.courier_name_custom : '',
         awb_number: createForm.awb_number || '',
+        from_name_override: selectedOption?.name || '',
+        from_address_override: selectedOption?.address || '',
       });
       toast.success('Dispatch sticker created.');
       setShowCreate(false);
       setCreateForm({ invoice_id: '', courier: 'delhivery', courier_name_custom: '', awb_number: '' });
+      setUseFromAddressOption(false);
+      setSelectedFromAddressIndex('0');
       fetchList();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Failed to create dispatch sticker.');
@@ -306,6 +319,31 @@ export default function DispatchPage() {
                 placeholder="Optional"
               />
             </div>
+            {Array.isArray(dispatchSettings?.from_address_options) && dispatchSettings.from_address_options.length > 1 && (
+              <div style={{ marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 10, padding: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={useFromAddressOption}
+                    onChange={(e) => setUseFromAddressOption(e.target.checked)}
+                  />
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Select from address for this dispatch</span>
+                </label>
+                {useFromAddressOption && (
+                  <select
+                    className="form-select"
+                    value={selectedFromAddressIndex}
+                    onChange={(e) => setSelectedFromAddressIndex(e.target.value)}
+                  >
+                    {dispatchSettings.from_address_options.map((opt, idx) => (
+                      <option key={`${opt.name}-${idx}`} value={idx}>
+                        {(opt.label || opt.name || `Address ${idx + 1}`)} — {opt.address || ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCreate(false)}>Cancel</button>
               <button type="button" className="btn btn-primary btn-sm" onClick={handleCreate} disabled={creating}>

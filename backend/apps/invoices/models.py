@@ -392,6 +392,9 @@ class DispatchSticker(TimeStampedModel):
     dimensions = models.CharField(max_length=100, blank=True, help_text='L x W x H in cm')
     dispatched_at = models.DateTimeField(null=True, blank=True)
     tracking_url = models.URLField(blank=True)
+    # Optional override for "From" block shown on dispatch sticker/PDF.
+    from_name_override = models.CharField(max_length=200, blank=True)
+    from_address_override = models.TextField(blank=True)
     created_by = models.ForeignKey(User, null=True, on_delete=models.DO_NOTHING, db_constraint=False)
     # Status within dispatch (e.g. processing, delivered). When set, DispatchFlowAction can move data to tracking.
     status = models.CharField(max_length=50, blank=True, default='')
@@ -433,6 +436,9 @@ class DispatchSettings(TimeStampedModel):
         max_length=30, blank=True, choices=TRACKING_STATUS_CHOICES, default='',
         help_text='Default status to set when transferring to tracking or updating tracking.'
     )
+    # Optional list of selectable "From" addresses for dispatch stickers.
+    # Format: [{ "label": "Warehouse A", "name": "Happy Kid - A", "address": "Street, City" }, ...]
+    from_address_options = models.JSONField(default=list, blank=True)
 
     class Meta:
         verbose_name = 'Dispatch Settings'

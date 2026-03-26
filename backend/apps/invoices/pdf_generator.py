@@ -478,11 +478,23 @@ def generate_dispatch_sticker_pdf(sticker, inv_settings):
     items = list(invoice.line_items.all())
     cur = getattr(inv_settings, 'currency_symbol', '₹') or '₹'
 
-    from_lines = [
-        invoice.supplier_name or '—',
-        invoice.supplier_address or '',
-        ', '.join(filter(None, [invoice.supplier_city, _state_name(invoice.supplier_state) if invoice.supplier_state else '', invoice.supplier_pincode or ''])),
-    ]
+    from_lines = []
+    if getattr(sticker, 'from_name_override', ''):
+        from_lines.append(sticker.from_name_override or '—')
+    else:
+        from_lines.append(invoice.supplier_name or '—')
+
+    if getattr(sticker, 'from_address_override', ''):
+        from_lines.append(sticker.from_address_override)
+    else:
+        from_lines.extend([
+            invoice.supplier_address or '',
+            ', '.join(filter(None, [
+                getattr(invoice, 'supplier_city', '') or '',
+                _state_name(invoice.supplier_state) if invoice.supplier_state else '',
+                getattr(invoice, 'supplier_pincode', '') or '',
+            ])),
+        ])
     from_html = '<br/>'.join(p for p in from_lines if p)
 
     to_lines = [
