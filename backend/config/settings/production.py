@@ -13,10 +13,12 @@ ALLOWED_HOSTS = [
 FRONTEND_CLIENT_URL = "https://trading.zitrapps.com"
 
 # ✅ CORS (frontend → backend)
-CORS_ALLOW_ALL_ORIGINS = False
+# CORS_ALLOW_ALL_ORIGINS = false
+CORS_ALLOW_ALL_ORIGINS = true
 
 CORS_ALLOWED_ORIGINS = [
-    "*",
+"https://trading.zitrapps.com",
+#     "*",
 ]
 
 # ✅ Allow all tenant subdomains
