@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from apps.crm.models import Lead, Customer, LeadActivity, LeadFormSchema, CustomLeadStatus, CustomLeadSource, StatusFlowAction
+from apps.crm.constants import LEAD_CORE_KEYS, DISPLAY_ONLY_KEYS
+from apps.crm.lead_form_utils import validate_phone_for_schema, merge_default_fields
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -34,6 +36,34 @@ class LeadSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def validate(self, data):
+        schema = self.context.get('lead_form_schema')
+        tenant = self.context.get('tenant')
+        instance = getattr(self, 'instance', None)
+        if schema:
+            phone_in = data.get('phone', serializers.empty)
+            if phone_in is not serializers.empty:
+                phone_val = phone_in or ''
+            else:
+                phone_val = (instance.phone if instance else '') or ''
+            ok, err = validate_phone_for_schema(str(phone_val), schema, tenant=tenant)
+            if not ok:
+                raise serializers.ValidationError({'phone': err})
+
+            if instance is None:
+                merged = merge_default_fields(schema, tenant=tenant)
+                for f in merged:
+                    k = f.get('key')
+                    if not k or k in DISPLAY_ONLY_KEYS or not f.get('required'):
+                        continue
+                    if k not in LEAD_CORE_KEYS:
+                        continue
+                    raw = data.get(k, '')
+                    val = str(raw).strip() if raw is not None else ''
+                    if not val:
+                        raise serializers.ValidationError({k: f'"{f.get("label", k)}" is required.'})
+        return data
+
     def get_assigned_to_name(self, obj):
         return obj.assigned_to.full_name if obj.assigned_to else None
 
@@ -47,7 +77,7 @@ class LeadFormSchemaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = LeadFormSchema
-        fields = ['id', 'fields', 'is_locked', 'created_at', 'updated_at']
+        fields = ['id', 'fields', 'default_field_overrides', 'is_locked', 'created_at', 'updated_at']
 
     def get_is_locked(self, obj):
         return Lead.objects.exists()

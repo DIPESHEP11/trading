@@ -17,7 +17,7 @@ class TenantSerializer(serializers.ModelSerializer):
             'module_crm', 'module_products', 'module_stock', 'module_orders',
             'module_warehouse', 'module_invoices', 'module_dispatch',
             'module_tracking', 'module_manufacturing', 'module_hr', 'module_analytics',
-            'created_on', 'domain', 'update_domain',
+            'crm_phone_regex_presets', 'created_on', 'domain', 'update_domain',
         ]
         read_only_fields = ['id', 'slug', 'created_on', 'logo_url']
         extra_kwargs = {'logo': {'write_only': True, 'required': False}}
@@ -124,6 +124,27 @@ class RegisterClientSerializer(serializers.Serializer):
 
     # Admin user
     admin = TenantAdminUserSerializer()
+
+    crm_phone_regex_presets = serializers.JSONField(required=False, default=list)
+
+    def validate_crm_phone_regex_presets(self, val):
+        if val is None:
+            return []
+        if not isinstance(val, list):
+            raise serializers.ValidationError('Expected a JSON array of presets.')
+        out = []
+        for item in val[:25]:
+            if not isinstance(item, dict):
+                continue
+            pattern = str(item.get('pattern', '')).strip()
+            if not pattern:
+                continue
+            label = str(item.get('label', '')).strip()
+            pid = str(item.get('id', '')).strip()
+            if not pid:
+                pid = slugify(label)[:50] or f'preset_{len(out)}'
+            out.append({'id': pid, 'label': label or pid, 'pattern': pattern})
+        return out
 
     def validate(self, attrs):
         if not attrs.get('domain'):

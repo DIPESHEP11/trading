@@ -187,6 +187,12 @@ def _normalize_register_data(data):
     ):
         if field in out and isinstance(out[field], str):
             out[field] = out[field].lower() in ('true', '1', 'yes')
+    if 'crm_phone_regex_presets' in out and isinstance(out['crm_phone_regex_presets'], str):
+        import json
+        try:
+            out['crm_phone_regex_presets'] = json.loads(out['crm_phone_regex_presets'])
+        except json.JSONDecodeError:
+            out['crm_phone_regex_presets'] = []
     return out
 
 
@@ -212,6 +218,7 @@ class RegisterClientView(APIView):
         data = serializer.validated_data
         admin_data = data.pop('admin')
         domain_name = data.pop('domain')
+        phone_presets = data.pop('crm_phone_regex_presets', [])
 
         # 1. Create the tenant (auto-creates schema via django-tenants)
         tenant = Tenant.objects.create(
@@ -235,6 +242,7 @@ class RegisterClientView(APIView):
             module_manufacturing=data.get('module_manufacturing', False),
             module_hr=data.get('module_hr', False),
             module_analytics=data.get('module_analytics', True),
+            crm_phone_regex_presets=phone_presets,
             is_active=True,
         )
 

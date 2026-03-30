@@ -1,4 +1,5 @@
 import axiosInstance from './axiosInstance';
+import type { CrmPhoneRegexPreset } from '@/types';
 
 export interface ClientModule {
   crm: boolean;
@@ -43,6 +44,8 @@ export interface RegisterClientPayload {
   module_hr: boolean;
   module_analytics: boolean;
   admin: ClientAdminPayload;
+  /** Defined by superadmin; client CRM picks one preset for Contact validation */
+  crm_phone_regex_presets?: CrmPhoneRegexPreset[];
 }
 
 export const clientApi = {
@@ -95,6 +98,9 @@ export const clientApi = {
     form.append('admin.last_name', payload.admin.last_name || '');
     form.append('admin.phone', payload.admin.phone || '');
     form.append('admin.password', payload.admin.password);
+
+    const presets = payload.crm_phone_regex_presets ?? [];
+    form.append('crm_phone_regex_presets', JSON.stringify(presets));
 
     return axiosInstance.post('/tenants/register/', form, {
       headers: { 'Content-Type': 'multipart/form-data' },

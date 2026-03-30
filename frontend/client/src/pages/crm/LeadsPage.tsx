@@ -147,10 +147,23 @@ export default function LeadsPage() {
   };
 
   const openAddLeadModal = () => {
-    const allFields = schema?.fields ?? [];
+    const allFields = (schema?.fields ?? []).filter((f) => !['date', 'status'].includes(f.key));
     if (allFields.length) setAddLeadSchemaData(Object.fromEntries(allFields.map((f: { key: string }) => [f.key, ''])));
     setAddLeadModalOpen(true);
   };
+
+  const orderedAddLeadFields = (() => {
+    const merged = schema?.fields ?? [];
+    const defaults = schema?.default_fields ?? [];
+    const custom = schema?.custom_fields ?? [];
+    // Prefer explicit split from API to keep default fields first, then custom fields.
+    if (defaults.length || custom.length) {
+      const orderedDefaults = [...defaults].sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+      const orderedCustom = [...custom].sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+      return [...orderedDefaults, ...orderedCustom].filter((f) => !['date', 'status'].includes(f.key));
+    }
+    return [...merged].sort((a, b) => (a.order ?? 999) - (b.order ?? 999)).filter((f) => !['date', 'status'].includes(f.key));
+  })();
 
   // ── Select / deselect leads ──
   const toggleSelect = (id: number) => {
@@ -178,19 +191,23 @@ export default function LeadsPage() {
     }
     setAssignSaving(true);
     try {
-      const res = await crmApi.leads.bulkAssign({
+      const res = (await crmApi.leads.bulkAssign({
         lead_ids: useUnassigned ? undefined : Array.from(selectedIds),
         filter_unassigned: useUnassigned || undefined,
         assignment_type: assignType,
         employees: pickedEmps,
         pool_batch_size: poolBatch,
-      });
-      const d = (res as { data?: { assigned: number } })?.data;
-      toast.success(`Assigned ${d?.assigned ?? '?'} leads successfully.`);
-      setBulkModal(false);
-      setSelectedIds(new Set());
-      setPickedEmps([]);
-      fetchLeads();
+      })) as { message?: string; data?: { assigned?: number; preferences_saved?: boolean } };
+      const d = res?.data;
+      if (d?.preferences_saved) {
+        toast.success(res?.message || 'No matching leads. Your bulk-assign setup was saved for next time.');
+      } else {
+        toast.success(res?.message || `Assigned ${d?.assigned ?? 0} leads successfully.`);
+        setBulkModal(false);
+        setSelectedIds(new Set());
+        setPickedEmps([]);
+        fetchLeads();
+      }
     } catch (err: unknown) {
       const ex = err as { response?: { data?: { message?: string } } };
       toast.error(ex?.response?.data?.message || 'Bulk assign failed.');
@@ -301,7 +318,7 @@ export default function LeadsPage() {
     setSchemaFields((prev) => prev.filter((_, i) => i !== idx));
 
   const extractLeadFromSchema = (data: Record<string, string>) => {
-    const coreKeys = ['name', 'phone', 'email', 'company', 'source', 'status'];
+    const coreKeys = ['name', 'phone', 'email', 'company', 'source'];
     const custom: Record<string, string> = {};
     let name = '';
     let email = '';
@@ -318,7 +335,6 @@ export default function LeadsPage() {
       else if (k === 'phone' || k === 'mobile' || k === 'contact') phone = v;
       else if (k === 'company') company = v;
       else if (k === 'source') source = v;
-      else if (k === 'status') status = v;
       else custom[key] = v;
     }
     return {
@@ -340,7 +356,7 @@ export default function LeadsPage() {
       const v = (val ?? '').trim();
       if (v) data[key] = v;
     }
-    const allFields = (schema?.fields ?? []).filter((f) => f.key !== 'date');
+    const allFields = (schema?.fields ?? []).filter((f) => !['date', 'status'].includes(f.key));
     if (!allFields.length) {
       toast.error('Form format not configured. Set up fields in CRM Settings.');
       return;
@@ -349,6 +365,21 @@ export default function LeadsPage() {
     for (const f of required) {
       if (!(data[f.key] ?? '').trim()) {
         toast.error(`"${f.label}" is required.`);
+        return;
+      }
+    }
+    for (const f of allFields) {
+      if (f.type !== 'phone' || !f.pattern?.trim()) continue;
+      const v = (data[f.key] ?? '').trim();
+      if (!v) continue;
+      try {
+        const re = new RegExp(f.pattern);
+        if (!re.test(v)) {
+          toast.error(`"${f.label}" is not a valid phone number for your format.`);
+          return;
+        }
+      } catch {
+        toast.error('Phone validation regex in CRM Settings is invalid.');
         return;
       }
     }
@@ -361,7 +392,7 @@ export default function LeadsPage() {
         phone,
         company,
         source,
-        status,
+        status: status || 'new',
         custom_data: custom_data && Object.keys(custom_data).length ? custom_data : undefined,
       });
       toast.success('Lead added.');
@@ -562,12 +593,24 @@ export default function LeadsPage() {
                 </div>
               ) : (
                 <>
-                  {[...(schema?.fields ?? [])].sort((a, b) => (a.order ?? 999) - (b.order ?? 999)).map((f) => (
+                  {orderedAddLeadFields.map((f) => (
                     <div key={f.key} className="form-group">
                       <label className="form-label">{f.label}{f.required && ' *'}</label>
                       {f.type === 'textarea' ? (
                         <textarea className="form-textarea" rows={2} value={addLeadSchemaData[f.key] ?? ''}
                           onChange={(e) => setAddLeadSchemaData((p) => ({ ...p, [f.key]: e.target.value }))} required={f.required} />
+                      ) : f.key === 'source' ? (
+                        <select
+                          className="form-select"
+                          value={addLeadSchemaData[f.key] ?? ''}
+                          onChange={(e) => setAddLeadSchemaData((p) => ({ ...p, [f.key]: e.target.value }))}
+                          required={f.required}
+                        >
+                          <option value="">Select source...</option>
+                          {customSources.map((s) => (
+                            <option key={s.key} value={s.key}>{s.label}</option>
+                          ))}
+                        </select>
                       ) : f.type === 'select' ? (
                         <select className="form-select" value={addLeadSchemaData[f.key] ?? ''}
                           onChange={(e) => setAddLeadSchemaData((p) => ({ ...p, [f.key]: e.target.value }))} required={f.required}>
@@ -575,10 +618,13 @@ export default function LeadsPage() {
                           {(f.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
                       ) : f.type === 'phone' ? (
-                        <input className="form-input" type="tel" maxLength={10}
+                        <input className="form-input" type="tel" maxLength={f.pattern ? 24 : 10}
                           value={addLeadSchemaData[f.key] ?? ''}
-                          onChange={(e) => setAddLeadSchemaData((p) => ({ ...p, [f.key]: restrictTo10Digits(e.target.value) }))}
-                          required={f.required} placeholder="9876543210" />
+                          onChange={(e) => setAddLeadSchemaData((p) => ({
+                            ...p,
+                            [f.key]: f.pattern ? e.target.value.replace(/[^\d+()\s-]/g, '') : restrictTo10Digits(e.target.value),
+                          }))}
+                          required={f.required} placeholder={f.pattern ? 'Phone' : '9876543210'} />
                       ) : (
                         <input className="form-input"
                           type={f.type === 'email' ? 'email' : f.type === 'number' ? 'number' : 'text'}

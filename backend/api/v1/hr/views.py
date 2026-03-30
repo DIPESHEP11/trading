@@ -2,19 +2,58 @@ from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated
-from apps.hr.models import EmployeeProfile, EmployeeCustomField, EmployeeDocument, EmployeeModulePermission
+from apps.hr.models import Role, EmployeeProfile, EmployeeCustomField, EmployeeDocument, EmployeeModulePermission
 from apps.users.models import UserRole
 from .serializers import (
-    EmployeeProfileSerializer, EmployeeCustomFieldSerializer, EmployeeDocumentSerializer,
+    RoleSerializer, EmployeeProfileSerializer, EmployeeCustomFieldSerializer, EmployeeDocumentSerializer,
     EmployeeModulePermissionSerializer, EmployeePermissionSummarySerializer,
 )
 from apps.core.responses import success_response, error_response
 from apps.core.permissions import IsStaffOrAbove, IsTenantAdmin
 
 
+class RoleViewSet(viewsets.ModelViewSet):
+    """CRUD for custom Roles — GET/POST/PATCH/DELETE /api/v1/hr/roles/"""
+    queryset = Role.objects.filter(is_active=True)
+    serializer_class = RoleSerializer
+    permission_classes = [IsTenantAdmin]
+    pagination_class = None
+
+    def get_queryset(self):
+        return Role.objects.all().order_by('display_order', 'name')
+
+    def list(self, request, *args, **kwargs):
+        qs = self.get_queryset()
+        serializer = self.get_serializer(qs, many=True)
+        return success_response(data={'roles': serializer.data})
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return success_response(
+            data=serializer.data, message='Role created.',
+            http_status=status.HTTP_201_CREATED
+        )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return success_response(data=serializer.data, message='Role updated.')
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.is_active = False
+        instance.save()
+        return success_response(message='Role deactivated.')
+
+
 class EmployeeViewSet(viewsets.ModelViewSet):
     """CRUD for Employee Profiles — GET/POST/PATCH/DELETE /api/v1/hr/employees/"""
-    queryset = EmployeeProfile.objects.all().select_related('user').prefetch_related(
+    queryset = EmployeeProfile.objects.all().select_related('user', 'role').prefetch_related(
         'custom_values__field', 'documents'
     )
     serializer_class = EmployeeProfileSerializer
@@ -119,7 +158,7 @@ This link expires in 24 hours. If you didn't request this, contact your administ
             send_mail(
                 subject=subject,
                 message=message,
-                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@traiding.local'),
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@trading.local'),
                 recipient_list=[user.email],
                 fail_silently=False,
             )
@@ -178,20 +217,26 @@ class EmployeePermissionsView(APIView):
         employee_id = request.query_params.get('employee')
 
         if not employee_id:
-            employees = EmployeeProfile.objects.select_related('user').all()
+            employees = EmployeeProfile.objects.select_related('user', 'role').all()
             serializer = EmployeePermissionSummarySerializer(employees, many=True)
             return success_response(data=serializer.data)
 
         try:
-            emp = EmployeeProfile.objects.select_related('user').get(pk=employee_id)
+            emp = EmployeeProfile.objects.select_related('user', 'role').get(pk=employee_id)
         except EmployeeProfile.DoesNotExist:
             return error_response('Employee not found.', http_status=status.HTTP_404_NOT_FOUND)
 
+        # Role defaults (from employee's role) — base permissions
+        role_defaults = emp.role.default_permissions if emp.role else {}
+
+        # Employee-specific overrides (stored in EmployeeModulePermission)
         perms = EmployeeModulePermission.objects.filter(employee=emp.user)
-        serializer = EmployeeModulePermissionSerializer(perms, many=True)
+        employee_perms = {p.module: {'can_view': p.can_view, 'can_create': p.can_create, 'can_edit': p.can_edit, 'can_delete': p.can_delete} for p in perms}
+
         return success_response(data={
             'employee': EmployeePermissionSummarySerializer(emp).data,
-            'permissions': serializer.data,
+            'role_defaults': role_defaults,
+            'permissions': employee_perms,
         })
 
     def put(self, request):
@@ -205,7 +250,10 @@ class EmployeePermissionsView(APIView):
             return error_response('Employee not found.', http_status=status.HTTP_404_NOT_FOUND)
 
         permissions = request.data.get('permissions', {})
+        valid_modules = {c[0] for c in EmployeeModulePermission.MODULE_CHOICES}
         for module, flags in permissions.items():
+            if module not in valid_modules:
+                continue
             EmployeeModulePermission.objects.update_or_create(
                 employee=emp.user,
                 module=module,
@@ -234,8 +282,24 @@ class MyPermissionsView(APIView):
         if user.role in (UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN):
             return success_response(data={'modules': {}})
 
-        perms = EmployeeModulePermission.objects.filter(employee=user, can_view=True)
-        modules = {p.module: {'can_view': p.can_view, 'can_create': p.can_create, 'can_edit': p.can_edit, 'can_delete': p.can_delete} for p in perms}
+        # Start with role defaults (if employee has a role)
+        try:
+            profile = EmployeeProfile.objects.select_related('role').get(user=user)
+            role_defaults = profile.role.default_permissions if profile.role else {}
+        except EmployeeProfile.DoesNotExist:
+            role_defaults = {}
+
+        # Employee-specific overrides
+        perms = EmployeeModulePermission.objects.filter(employee=user)
+        employee_overrides = {p.module: {'can_view': p.can_view, 'can_create': p.can_create, 'can_edit': p.can_edit, 'can_delete': p.can_delete} for p in perms}
+
+        # Merge: employee override wins per module; else use role default
+        all_modules = set(role_defaults.keys()) | set(employee_overrides.keys())
+        modules = {}
+        for mod in all_modules:
+            modules[mod] = employee_overrides.get(mod) or role_defaults.get(mod, {})
+        # Only include modules where can_view is True
+        modules = {k: v for k, v in modules.items() if v.get('can_view')}
         return success_response(data={'modules': modules})
 
 

@@ -1,13 +1,14 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    EmployeeViewSet, EmployeeCustomFieldViewSet,
+    RoleViewSet, EmployeeViewSet, EmployeeCustomFieldViewSet,
     EmployeeDocumentUploadView, EmployeeDocumentDeleteView,
     EmployeePermissionsView, MyPermissionsView,
     EmployeeSendResetLinkView,
 )
 
 router = DefaultRouter()
+router.register(r'roles', RoleViewSet, basename='role')
 router.register(r'employees', EmployeeViewSet, basename='employee')
 router.register(r'custom-fields', EmployeeCustomFieldViewSet, basename='employee-custom-field')
 

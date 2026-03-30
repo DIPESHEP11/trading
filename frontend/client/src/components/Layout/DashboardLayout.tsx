@@ -61,7 +61,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     ? `${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`.toUpperCase() || user.email[0].toUpperCase()
     : '?';
 
-  const companyName = (config as unknown as { company_name?: string })?.company_name || config?.company || 'Traiding';
+  const companyName = (config as unknown as { company_name?: string })?.company_name || config?.company || 'Trading';
 
   // ── Build nav sections based on role + enabled modules ─────────────────────
   type NavItem = { to: string; label: string; icon: string; end?: boolean };

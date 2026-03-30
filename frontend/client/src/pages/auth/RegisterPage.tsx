@@ -32,8 +32,21 @@ export default function RegisterPage() {
       setAuth(res.data, res.data.access, res.data.refresh);
       toast.success('Account created!');
       navigate('/dashboard');
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Registration failed.');
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string; errors?: Record<string, unknown> } } };
+      const data = ax?.response?.data;
+      let msg = data?.message || 'Registration failed.';
+      const errors = data?.errors;
+      if (errors && typeof errors === 'object' && !Array.isArray(errors)) {
+        const parts: string[] = [];
+        for (const v of Object.values(errors)) {
+          if (Array.isArray(v)) v.forEach((x) => typeof x === 'string' && parts.push(x));
+          else if (typeof v === 'string') parts.push(v);
+          else if (v && typeof v === 'object') parts.push(JSON.stringify(v));
+        }
+        if (parts.length) msg = [...new Set(parts)].join(' ');
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

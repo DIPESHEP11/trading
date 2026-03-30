@@ -1,6 +1,6 @@
 # 3. Module Architecture
 
-The Traiding platform is built dynamically, treating features as "Modules." This allows the Super Admin to turn on or off major chunks of functionality for any given Tenant. 
+The Trading platform is built dynamically, treating features as "Modules." This allows the Super Admin to turn on or off major chunks of functionality for any given Tenant. 
 
 ## The Concept
 

@@ -1,6 +1,8 @@
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from django.utils import timezone
+from django.db import connection
+from decimal import Decimal
 from apps.orders.models import Order, OrderStatusHistory, OrderStatus, CustomOrderStatus, OrderFlowAction
 from apps.core.responses import success_response, error_response
 from apps.core.permissions import IsStaffOrAbove, IsTenantAdmin
@@ -95,14 +97,90 @@ def _execute_order_flow(order, user):
         return result
 
     if flow.action == 'create_invoice' and flow.target_module == 'invoices':
+        # Create a real invoice/proforma from order so it appears in Invoice module.
+        from apps.invoices.models import Invoice, InvoiceLineItem, InvoiceSettings
+        from api.v1.invoices.serializers import calculate_line_item_tax, calculate_invoice_totals
+
+        existing = Invoice.objects.filter(order=order).first()
+        if existing:
+            old = order.status
+            order.status = 'invoiced'
+            order.save(update_fields=['status'])
+            OrderStatusHistory.objects.create(
+                order=order, from_status=old, to_status='invoiced',
+                changed_by=user, note=f'Flow: Existing invoice {existing.invoice_number} linked')
+            result['executed'] = True
+            result['message'] = f'Order linked to existing invoice {existing.invoice_number}.'
+            return result
+
+        tenant = getattr(connection, 'tenant', None) or getattr(user, 'tenant', None)
+        settings, _ = InvoiceSettings.objects.get_or_create(tenant=tenant)
+        is_gst = settings.tax_type == 'indian_gst'
+        inv_type = 'proforma'
+        inv_number = settings.generate_proforma_number()
+        recipient_name = order.shipping_name or (order.customer.full_name if order.customer else 'Customer')
+        recipient_phone = order.shipping_phone or (order.customer.phone if order.customer else '')
+        recipient_email = order.customer.email if order.customer else ''
+        recipient_address = order.shipping_address or ''
+        recipient_city = order.shipping_city or ''
+        recipient_state = order.shipping_state or ''
+        recipient_pincode = order.shipping_pincode or ''
+        place_of_supply = recipient_state
+        supplier_state = settings.supplier_state or ''
+        is_intra = supplier_state == place_of_supply if (supplier_state and place_of_supply) else True
+
+        invoice = Invoice.objects.create(
+            invoice_number=inv_number,
+            invoice_type=inv_type,
+            supply_type='b2b',
+            order=order,
+            status='proforma',
+            is_gst=is_gst,
+            is_intra_state=is_intra,
+            supplier_name=settings.supplier_name or '',
+            supplier_address=settings.supplier_address or '',
+            supplier_state=settings.supplier_state or '',
+            supplier_state_code=settings.supplier_state or '',
+            supplier_gstin=settings.supplier_gstin or '',
+            recipient_name=recipient_name,
+            recipient_address=recipient_address,
+            recipient_city=recipient_city,
+            recipient_state=recipient_state,
+            recipient_state_code=recipient_state,
+            recipient_pincode=recipient_pincode,
+            recipient_gstin='',
+            recipient_phone=recipient_phone,
+            recipient_email=recipient_email,
+            place_of_supply=place_of_supply,
+            bank_name=settings.bank_name or '',
+            bank_account_number=settings.bank_account_number or '',
+            bank_ifsc=settings.bank_ifsc or '',
+            bank_branch=settings.bank_branch or '',
+            terms=settings.default_terms or '',
+            created_by=user,
+        )
+        for oi in order.items.select_related('product').all():
+            item_data = {
+                'description': oi.product.name,
+                'hsn_sac': '9983',
+                'quantity': oi.quantity,
+                'unit': 'NOS',
+                'rate': oi.unit_price,
+                'discount_amount': Decimal('0'),
+                'tax_rate': settings.default_tax_rate if is_gst else Decimal('0'),
+            }
+            item_data = calculate_line_item_tax(item_data, is_gst, is_intra)
+            InvoiceLineItem.objects.create(invoice=invoice, **item_data)
+        calculate_invoice_totals(invoice)
+
         old = order.status
         order.status = 'invoiced'
         order.save(update_fields=['status'])
         OrderStatusHistory.objects.create(
             order=order, from_status=old, to_status='invoiced',
-            changed_by=user, note='Flow: Marked for invoicing')
+            changed_by=user, note=f'Flow: Proforma {invoice.invoice_number} created from order')
         result['executed'] = True
-        result['message'] = 'Order marked for invoicing.'
+        result['message'] = f'Order moved to invoiced and proforma {invoice.invoice_number} created.'
         return result
 
     if flow.action == 'mark_dispatch' and flow.target_module == 'dispatch':

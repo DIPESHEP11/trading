@@ -45,6 +45,7 @@ export default function InvoicesPage() {
   const [ordersPending, setOrdersPending] = useState<PendingOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<PendingOrder | null>(null);
+  const [selectedOrderForCreate, setSelectedOrderForCreate] = useState<string>('');
   const [creatingFromOrder, setCreatingFromOrder] = useState(false);
   const [statuses, setStatuses] = useState<IStatus[]>([]);
   const [states, setStates] = useState<IndianState[]>([]);
@@ -297,7 +298,33 @@ export default function InvoicesPage() {
     });
     setShowSupplierEdit(false);
     setLineItems([{ ...emptyItem, tax_rate: settings?.default_tax_rate || '18' }]);
+    setSelectedOrderForCreate('');
+    if (!ordersPending.length) fetchOrdersPending();
     setShowCreate(true);
+  };
+
+  const applyOrderToCreateForm = (ord: PendingOrder) => {
+    setForm((prev) => ({
+      ...prev,
+      recipient_name: ord.customer_name || ord.shipping_name || '',
+      recipient_phone: ord.shipping_phone || '',
+      recipient_address: ord.shipping_address || '',
+      recipient_city: ord.shipping_city || '',
+      recipient_state: ord.shipping_state || '',
+      recipient_pincode: ord.shipping_pincode || '',
+      place_of_supply: ord.shipping_state || '',
+      notes: ord.notes || prev.notes || '',
+    }));
+    const mappedItems = (ord.items || []).map((it) => ({
+      description: it.product_name || '',
+      hsn_sac: '',
+      quantity: String(it.quantity || 1),
+      unit: 'NOS',
+      rate: String(it.unit_price || '0'),
+      discount_amount: '0',
+      tax_rate: String(settings?.default_tax_rate || '18'),
+    }));
+    if (mappedItems.length) setLineItems(mappedItems);
   };
 
   const updForm = (k: string, v: any) => setForm((p) => ({ ...p, [k]: v }));
@@ -313,6 +340,7 @@ export default function InvoicesPage() {
     try {
       const payload = {
         ...form,
+        order: selectedOrderForCreate ? parseInt(selectedOrderForCreate, 10) : undefined,
         line_items: lineItems.map((it) => ({
           description: it.description,
           hsn_sac: it.hsn_sac,
@@ -523,6 +551,35 @@ export default function InvoicesPage() {
             {editingInvoice?.lead_details && (
               <div style={{ marginBottom: 18 }}>
                 <LeadDetailsCard lead={editingInvoice.lead_details} compact />
+              </div>
+            )}
+
+            {editingId == null && (
+              <div style={{ marginBottom: 14 }}>
+                <label className="form-label" style={{ fontSize: 12, marginBottom: 6, display: 'block' }}>
+                  Create from Order (optional)
+                </label>
+                <select
+                  className="form-select"
+                  value={selectedOrderForCreate}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setSelectedOrderForCreate(id);
+                    if (!id) return;
+                    const ord = ordersPending.find((o) => o.id === parseInt(id, 10));
+                    if (ord) applyOrderToCreateForm(ord);
+                  }}
+                >
+                  <option value="">Select pending order…</option>
+                  {ordersPending.map((ord) => (
+                    <option key={ord.id} value={ord.id}>
+                      {ord.order_number} — {ord.customer_name || ord.shipping_name || 'Customer'} — ₹{parseFloat(ord.total_amount || '0').toLocaleString()}
+                    </option>
+                  ))}
+                </select>
+                <p style={{ margin: '6px 0 0', fontSize: 11, color: '#64748b' }}>
+                  Selecting an order auto-fills recipient details and line items.
+                </p>
               </div>
             )}
 

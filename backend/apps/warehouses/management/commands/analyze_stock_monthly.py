@@ -117,7 +117,7 @@ class Command(BaseCommand):
                             send_mail(
                                 subject=f'[Buffer Stock] Fast-moving product: {product.name}',
                                 message=msg,
-                                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@traiding.local'),
+                                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@trading.local'),
                                 recipient_list=admin_emails,
                                 fail_silently=True,
                             )

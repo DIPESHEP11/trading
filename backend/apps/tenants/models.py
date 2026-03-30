@@ -54,6 +54,10 @@ class Tenant(TenantMixin):
     created_on = models.DateField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # CRM: phone validation presets for this client — configured by superadmin; client admin picks one in CRM Settings.
+    # [{ "id": "in10", "label": "India 10-digit", "pattern": "^[0-9]{10}$" }, ...]
+    crm_phone_regex_presets = models.JSONField(default=list, blank=True)
+
     # django-tenants: auto-create schema on save
     auto_create_schema = True
 

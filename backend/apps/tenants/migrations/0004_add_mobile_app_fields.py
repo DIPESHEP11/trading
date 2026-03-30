@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='tenant',
             name='mobile_app_bundle_id',
-            field=models.CharField(blank=True, help_text='e.g. com.traiding.acmecorp — used for app store publishing', max_length=200),
+            field=models.CharField(blank=True, help_text='e.g. com.trading.acmecorp — used for app store publishing', max_length=200),
         ),
         migrations.AddField(
             model_name='tenant',

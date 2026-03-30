@@ -4,7 +4,7 @@ The platform incorporates three distinct high-level user tiers, plus a customiza
 
 ## 1. Super Admin (Platform Owner)
 
-The Super Admin logs into a dedicated **Superadmin Portal** (`admin.traiding.com`). They manage the SaaS platform itself. **They cannot see inside a Tenant's database schemas.**
+The Super Admin logs into a dedicated **Superadmin Portal** (`admin.trading.com`). They manage the SaaS platform itself. **They cannot see inside a Tenant's database schemas.**
 
 ### Capabilities:
 - **Tenant Management**: Create, edit, suspend, and delete companies.
@@ -15,7 +15,7 @@ The Super Admin logs into a dedicated **Superadmin Portal** (`admin.traiding.com
 
 ## 2. Client Admin (Business Owner)
 
-The Client Admin logs into the **Client Portal** on their specific subdomain (`company.traiding.com`). They manage an individual business entirely.
+The Client Admin logs into the **Client Portal** on their specific subdomain (`company.trading.com`). They manage an individual business entirely.
 
 ### Capabilities:
 - **Employee Management**: Invite staff, assign roles.

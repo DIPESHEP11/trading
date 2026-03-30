@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { hrApi } from '@/api/hrApi';
+import { hrApi, type Role } from '@/api/hrApi';
 import { useAuthStore } from '@/store/authStore';
 import { restrictTo10Digits } from '@/utils/phone';
 import type { Employee, EmployeeDocument, EmployeeCustomField } from '@/types';
@@ -19,11 +19,7 @@ const DOC_CATEGORIES: { value: string; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-const ROLE_OPTIONS = [
-  { value: 'member', label: 'Employee' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'staff', label: 'Staff' },
-];
+// Roles loaded from API (hrApi.roles.list)
 
 const SECTION_OPTIONS: { value: EmployeeCustomField['section']; label: string }[] = [
   { value: 'basic', label: 'Basic Info' },
@@ -48,7 +44,7 @@ const EMPTY_FORM = {
   address: '', home_phone: '', reference_phone: '',
   emergency_contact_name: '', emergency_contact_phone: '',
   employee_id: '', department: '', designation: '',
-  role: 'member', join_date: new Date().toISOString().split('T')[0],
+  role: null as number | null, join_date: new Date().toISOString().split('T')[0],
   salary: '', experience_details: '', education_details: '',
   description: '', resigned: false, resign_date: '',
 };
@@ -68,6 +64,9 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+
+  // Roles from API (for dropdown)
+  const [roles, setRoles] = useState<Role[]>([]);
 
   // Custom fields state
   const [customFields, setCustomFields] = useState<EmployeeCustomField[]>([]);
@@ -98,6 +97,20 @@ export default function EmployeesPage() {
   const [docFile, setDocFile] = useState<File | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const firstNameInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // When modal opens, scroll form to top so required fields (First name, Email) are visible
+  useEffect(() => {
+    if (!modalOpen) return;
+    const timer = setTimeout(() => {
+      formRef.current?.scrollTo?.({ top: 0, behavior: 'instant' });
+      // Also scroll first name into view in case form layout shifts
+      firstNameInputRef.current?.scrollIntoView?.({ behavior: 'instant', block: 'start' });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [modalOpen, editing]);
 
   // ─── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -125,8 +138,17 @@ export default function EmployeesPage() {
     } catch { /* non-critical */ }
   };
 
+  const fetchRoles = async () => {
+    try {
+      const res = await hrApi.roles.list();
+      const d = (res as { data?: { roles?: Role[] } })?.data;
+      setRoles(d?.roles ?? []);
+    } catch { /* non-critical */ }
+  };
+
   useEffect(() => { fetchEmployees(); }, [statusFilter]);
   useEffect(() => { fetchCustomFields(); }, []);
+  useEffect(() => { fetchRoles(); }, []);
 
   // ─── Open add / edit modal ───────────────────────────────────────────────────
 
@@ -157,7 +179,7 @@ export default function EmployeesPage() {
       employee_id: emp.employee_id || '',
       department: emp.department || '',
       designation: emp.designation || '',
-      role: emp.role || 'member',
+      role: emp.role ?? null,
       join_date: emp.join_date || '',
       salary: emp.salary || '',
       experience_details: emp.experience_details || '',
@@ -178,15 +200,30 @@ export default function EmployeesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.first_name.trim()) { toast.error('First name is required.'); setActiveTab('basic'); return; }
-    if (!form.email.trim()) { toast.error('Email is required.'); setActiveTab('basic'); return; }
+    // Read from DOM as fallback (handles React state sync delays)
+    const emailFromDom = emailInputRef.current?.value?.trim() ?? '';
+    const email = form.email?.trim() || emailFromDom;
+    const firstNameFromDom = (e.target as HTMLFormElement).querySelector<HTMLInputElement>('input[name="first_name"]')?.value?.trim();
+    const firstName = form.first_name?.trim() || firstNameFromDom || '';
+    if (!firstName) {
+      toast.error('First name is required. Scroll up to see the First name field.');
+      setActiveTab('basic');
+      setTimeout(() => firstNameInputRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }), 100);
+      return;
+    }
+    if (!email) {
+      toast.error('Email is required. Please enter a valid email address.');
+      setActiveTab('basic');
+      setTimeout(() => emailInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+      return;
+    }
     if (!form.employee_id.trim()) { toast.error('Employee ID is required.'); setActiveTab('company'); return; }
 
     setSaving(true);
     try {
       const payload = {
-        first_name: form.first_name, last_name: form.last_name,
-        email: form.email, phone: form.phone,
+        first_name: firstName, last_name: form.last_name,
+        email, phone: form.phone,
         date_of_birth: form.date_of_birth || null,
         gender: form.gender, blood_group: form.blood_group,
         address: form.address, home_phone: form.home_phone,
@@ -233,8 +270,13 @@ export default function EmployeesPage() {
       setModalOpen(false);
       fetchEmployees();
     } catch (err: unknown) {
-      const ex = err as { response?: { data?: { message?: string } } };
-      toast.error(ex?.response?.data?.message || 'Failed to save employee.');
+      const ex = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } };
+      const data = ex?.response?.data;
+      const msg = data?.message
+        ?? (data?.errors?.email?.[0])
+        ?? (typeof data?.errors === 'object' && data?.errors ? Object.values(data.errors).flat().join(', ') : null)
+        ?? 'Failed to save employee.';
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -512,7 +554,7 @@ export default function EmployeesPage() {
                     <div><span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Employee ID</span><br /><strong style={{ fontFamily: 'monospace' }}>{viewEmployee.employee_id}</strong></div>
                     <div><span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Department</span><br />{fmt(viewEmployee.department)}</div>
                     <div><span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Designation</span><br />{fmt(viewEmployee.designation)}</div>
-                    <div><span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Role</span><br />{ROLE_OPTIONS.find((r) => r.value === viewEmployee.role)?.label || viewEmployee.role}</div>
+                    <div><span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Role</span><br />{viewEmployee.role_name ?? '—'}</div>
                     <div><span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Join date</span><br />{fmt(viewEmployee.join_date)}</div>
                     <div><span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Salary</span><br />{viewEmployee.salary ? `₹${Number(viewEmployee.salary).toLocaleString()}` : '—'}</div>
                     <div><span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Tenure</span><br />{fmt(viewEmployee.tenure)}</div>
@@ -644,7 +686,7 @@ export default function EmployeesPage() {
               ))}
             </div>
 
-            <form onSubmit={handleSubmit} style={{ flex: 1, overflow: 'auto' }}>
+            <form ref={formRef} onSubmit={handleSubmit} style={{ flex: 1, overflow: 'auto' }}>
               <div className="card-body">
 
                 {/* ── Basic Info ─────────────────────────────── */}
@@ -653,15 +695,35 @@ export default function EmployeesPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                       <div className="form-group">
                         <label className="form-label">First name *</label>
-                        <input className="form-input" value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} placeholder="John" />
+                        <input ref={firstNameInputRef} name="first_name" className="form-input" value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} placeholder="John" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Email *</label>
+                        <input
+                          ref={emailInputRef}
+                          className="form-input"
+                          type="email"
+                          name="email"
+                          autoComplete="email"
+                          value={form.email}
+                          onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                          disabled={!!editing}
+                          placeholder="e.g. john@company.com"
+                        />
                       </div>
                       <div className="form-group">
                         <label className="form-label">Last name</label>
                         <input className="form-input" value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} placeholder="Doe" />
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Email *</label>
-                        <input className="form-input" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} disabled={!!editing} placeholder="john@example.com" />
+                        <label className="form-label">Role</label>
+                        <select className="form-select" value={form.role ?? ''} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value ? Number(e.target.value) : null }))}>
+                          <option value="">— No role —</option>
+                          {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                        </select>
+                        {roles.length === 0 && (
+                          <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Create roles in Permissions → Roles</span>
+                        )}
                       </div>
                       <div className="form-group">
                         <label className="form-label">Phone</label>
@@ -714,12 +776,6 @@ export default function EmployeesPage() {
                       <div className="form-group">
                         <label className="form-label">Employee ID *</label>
                         <input className="form-input" value={form.employee_id} onChange={(e) => setForm((f) => ({ ...f, employee_id: e.target.value }))} placeholder="EMP-0001" />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Role</label>
-                        <select className="form-select" value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
-                          {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                        </select>
                       </div>
                       <div className="form-group">
                         <label className="form-label">Department</label>

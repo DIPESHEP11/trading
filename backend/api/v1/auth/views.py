@@ -156,7 +156,7 @@ This link expires in 24 hours. If you didn't request this, ignore this email.
             send_mail(
                 subject=subject,
                 message=message,
-                from_email=getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'noreply@traiding.local'),
+                from_email=getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'noreply@trading.local'),
                 recipient_list=[user.email],
                 fail_silently=False,
             )

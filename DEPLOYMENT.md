@@ -1,4 +1,4 @@
-# Deployment Guide: Traiding (NGINX + Gunicorn + React)
+# Deployment Guide: Trading (NGINX + Gunicorn + React)
 
 This guide covers deploying the **backend** (Django + Gunicorn) and **frontend** (React/Vite) on a Linux server using NGINX as a reverse proxy.
 
@@ -56,9 +56,9 @@ sudo apt install -y python3.11 python3.11-venv python3-pip nginx postgresql post
 ### 1.2 Create project directory
 
 ```bash
-sudo mkdir -p /var/www/traiding
-sudo chown $USER:$USER /var/www/traiding
-cd /var/www/traiding
+sudo mkdir -p /var/www/trading
+sudo chown $USER:$USER /var/www/trading
+cd /var/www/trading
 ```
 
 ---
@@ -72,8 +72,8 @@ sudo -u postgres psql
 ```
 
 ```sql
-CREATE USER traiding_user WITH PASSWORD 'your_secure_password';
-CREATE DATABASE traiding_db OWNER traiding_user;
+CREATE USER trading_user WITH PASSWORD 'your_secure_password';
+CREATE DATABASE trading_db OWNER trading_user;
 \q
 ```
 
@@ -92,7 +92,7 @@ Ensure `shared_preload_libraries` includes `pg_trgm` if needed. For django-tenan
 ### 3.1 Create virtual environment and install dependencies
 
 ```bash
-cd /var/www/traiding
+cd /var/www/trading
 git clone <your-repo-url> .
 # or: rsync your repo files here
 
@@ -104,7 +104,7 @@ pip install -r requirements/production.txt
 
 ### 3.2 Environment variables
 
-Create `/var/www/traiding/backend/.env`:
+Create `/var/www/trading/backend/.env`:
 
 ```env
 # Django
@@ -112,8 +112,8 @@ SECRET_KEY=your-very-long-random-secret-key
 DJANGO_SETTINGS_MODULE=config.settings.production
 
 # Database
-DB_NAME=traiding_db
-DB_USER=traiding_user
+DB_NAME=trading_db
+DB_USER=trading_user
 DB_PASSWORD=your_secure_password
 DB_HOST=localhost
 DB_PORT=5432
@@ -131,7 +131,7 @@ SENTRY_DSN=
 ### 3.3 Run migrations
 
 ```bash
-cd /var/www/traiding/backend
+cd /var/www/trading/backend
 source venv/bin/activate
 python manage.py migrate_schemas
 python manage.py collectstatic --noinput
@@ -149,7 +149,7 @@ python manage.py createsuperuser
 
 ### 4.1 Create Gunicorn config file
 
-Create `/var/www/traiding/backend/gunicorn_config.py`:
+Create `/var/www/trading/backend/gunicorn_config.py`:
 
 ```python
 # gunicorn_config.py
@@ -167,12 +167,12 @@ keepalive = 2
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.production")
 
 # Logging
-accesslog = "/var/log/gunicorn/traiding-access.log"
-errorlog = "/var/log/gunicorn/traiding-error.log"
+accesslog = "/var/log/gunicorn/trading-access.log"
+errorlog = "/var/log/gunicorn/trading-error.log"
 loglevel = "info"
 
 # Process naming
-proc_name = "traiding"
+proc_name = "trading"
 ```
 
 ### 4.2 Create log directory
@@ -184,24 +184,24 @@ sudo chown $USER:$USER /var/log/gunicorn
 
 ### 4.3 Systemd service
 
-A template is provided at `deploy/traiding.service`. Copy and enable:
+A template is provided at `deploy/trading.service`. Copy and enable:
 
 ```bash
-sudo cp /var/www/traiding/deploy/traiding.service /etc/systemd/system/
+sudo cp /var/www/trading/deploy/trading.service /etc/systemd/system/
 ```
 
-Or create `/etc/systemd/system/traiding.service` manually:
+Or create `/etc/systemd/system/trading.service` manually:
 
 ```ini
 [Unit]
-Description=Traiding Gunicorn daemon
+Description=Trading Gunicorn daemon
 After=network.target postgresql.service
 
 [Service]
 User=www-data
 Group=www-data
-WorkingDirectory=/var/www/traiding/backend
-ExecStart=/var/www/traiding/backend/venv/bin/gunicorn config.wsgi:application -c gunicorn_config.py
+WorkingDirectory=/var/www/trading/backend
+ExecStart=/var/www/trading/backend/venv/bin/gunicorn config.wsgi:application -c gunicorn_config.py
 Restart=on-failure
 RestartSec=5
 
@@ -209,13 +209,13 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-**Note:** Replace `user` with your actual deploy user if different. Ensure that user owns `/var/www/traiding`.
+**Note:** Replace `user` with your actual deploy user if different. Ensure that user owns `/var/www/trading`.
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable traiding
-sudo systemctl start traiding
-sudo systemctl status traiding
+sudo systemctl enable trading
+sudo systemctl start trading
+sudo systemctl status trading
 ```
 
 ---
@@ -225,7 +225,7 @@ sudo systemctl status traiding
 ### 5.1 Build for production
 
 ```bash
-cd /var/www/traiding/frontend/client
+cd /var/www/trading/frontend/client
 npm ci
 VITE_API_BASE_URL=/api/v1 npm run build
 ```
@@ -235,8 +235,8 @@ This creates `dist/` with static files. The relative URL `/api/v1` ensures API c
 ### 5.2 Copy build to NGINX location
 
 ```bash
-sudo mkdir -p /var/www/traiding/static/frontend
-sudo cp -r /var/www/traiding/frontend/client/dist/* /var/www/traiding/static/frontend/
+sudo mkdir -p /var/www/trading/static/frontend
+sudo cp -r /var/www/trading/frontend/client/dist/* /var/www/trading/static/frontend/
 ```
 
 ---
@@ -245,18 +245,18 @@ sudo cp -r /var/www/traiding/frontend/client/dist/* /var/www/traiding/static/fro
 
 ### 6.1 Create site config
 
-A template is at `deploy/nginx-traiding.conf`. Copy and edit:
+A template is at `deploy/nginx-trading.conf`. Copy and edit:
 
 ```bash
-sudo cp /var/www/traiding/deploy/nginx-traiding.conf /etc/nginx/sites-available/traiding
+sudo cp /var/www/trading/deploy/nginx-trading.conf /etc/nginx/sites-available/trading
 # Config is pre-set for trading.zitrapps.com
 ```
 
-Or create `/etc/nginx/sites-available/traiding` manually:
+Or create `/etc/nginx/sites-available/trading` manually:
 
 ```nginx
 # Upstream for Gunicorn
-upstream traiding_backend {
+upstream trading_backend {
     server 127.0.0.1:8000 fail_timeout=0;
 }
 
@@ -276,15 +276,15 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
 
     # Logs
-    access_log /var/log/nginx/traiding-access.log;
-    error_log /var/log/nginx/traiding-error.log;
+    access_log /var/log/nginx/trading-access.log;
+    error_log /var/log/nginx/trading-error.log;
 
     # Max upload size (for file uploads)
     client_max_body_size 20M;
 
     # API → Gunicorn
     location /api/ {
-        proxy_pass http://traiding_backend;
+        proxy_pass http://trading_backend;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -296,17 +296,17 @@ server {
 
     # Django admin static
     location /static/ {
-        alias /var/www/traiding/backend/staticfiles/;
+        alias /var/www/trading/backend/staticfiles/;
     }
 
     # Media files (uploads)
     location /media/ {
-        alias /var/www/traiding/backend/media/;
+        alias /var/www/trading/backend/media/;
     }
 
     # Frontend (React SPA)
     location / {
-        root /var/www/traiding/static/frontend;
+        root /var/www/trading/static/frontend;
         index index.html;
         try_files $uri $uri/ /index.html;
     }
@@ -316,7 +316,7 @@ server {
 ### 6.2 Enable site and SSL
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/traiding /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/trading /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -335,8 +335,8 @@ Certbot will modify your NGINX config automatically. After that, ensure your con
 ## 7. Media & Static Directories
 
 ```bash
-sudo mkdir -p /var/www/traiding/backend/media
-sudo chown -R www-data:www-data /var/www/traiding
+sudo mkdir -p /var/www/trading/backend/media
+sudo chown -R www-data:www-data /var/www/trading
 # Or your deploy user
 ```
 
@@ -351,7 +351,7 @@ sudo chown -R www-data:www-data /var/www/traiding
 | Collect static | `python manage.py collectstatic --noinput` |
 | Frontend build | `VITE_API_BASE_URL=/api/v1 npm run build` |
 | Copy frontend | `cp -r frontend/client/dist/* static/frontend/` |
-| Restart Gunicorn | `sudo systemctl restart traiding` |
+| Restart Gunicorn | `sudo systemctl restart trading` |
 | Reload NGINX | `sudo systemctl reload nginx` |
 
 ---
@@ -376,13 +376,13 @@ Ensure:
 ### Gunicorn not starting
 
 ```bash
-sudo journalctl -u traiding -f
+sudo journalctl -u trading -f
 ```
 
 ### NGINX 502 Bad Gateway
 
 - Check Gunicorn is running: `curl http://127.0.0.1:8000/api/v1/`
-- Check permissions on `/var/www/traiding`
+- Check permissions on `/var/www/trading`
 
 ### Frontend shows 404 on refresh
 
@@ -395,7 +395,7 @@ sudo journalctl -u traiding -f
 ### Static files 404
 
 - Run `python manage.py collectstatic --noinput`
-- Ensure NGINX `alias` paths match `/var/www/traiding/backend/staticfiles/`
+- Ensure NGINX `alias` paths match `/var/www/trading/backend/staticfiles/`
 
 ---
 
@@ -406,15 +406,15 @@ Create `deploy.sh` in project root:
 ```bash
 #!/bin/bash
 set -e
-cd /var/www/traiding
+cd /var/www/trading
 git pull
 cd backend && source venv/bin/activate
 pip install -r requirements/production.txt
 python manage.py migrate_schemas
 python manage.py collectstatic --noinput
-sudo systemctl restart traiding
+sudo systemctl restart trading
 cd ../frontend/client && npm ci && VITE_API_BASE_URL=/api/v1 npm run build
-sudo cp -r dist/* /var/www/traiding/static/frontend/
+sudo cp -r dist/* /var/www/trading/static/frontend/
 echo "Deployment complete."
 ```
 

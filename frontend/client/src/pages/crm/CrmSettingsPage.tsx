@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { crmApi } from '@/api/crmApi';
 import type { BulkAssignType, BulkAssignEmployee } from '@/api/crmApi';
 import { hrApi } from '@/api/hrApi';
-import type { LeadFormSchema, LeadFormField } from '@/types';
+import { configApi } from '@/api/businessApi';
+import type { LeadFormSchema, LeadFormField, CrmPhoneRegexPreset } from '@/types';
 import toast from 'react-hot-toast';
 
 const DEFAULT_LEAD_FIELDS: LeadFormField[] = [
@@ -12,10 +13,11 @@ const DEFAULT_LEAD_FIELDS: LeadFormField[] = [
   { key: 'address', label: 'Address', type: 'textarea', required: false, order: 3 },
   { key: 'product_name', label: 'Product name', type: 'text', required: false, order: 4 },
   { key: 'product_count', label: 'Product count', type: 'number', required: false, order: 5 },
-  { key: 'company', label: 'Company', type: 'text', required: false, order: 6 },
-  { key: 'source', label: 'Source', type: 'text', required: false, order: 7 },
-  { key: 'status', label: 'Status', type: 'text', required: false, order: 8 },
-  { key: 'date', label: 'Date', type: 'text', required: false, order: 9 },
+  { key: 'product_price', label: 'Product price', type: 'number', required: false, order: 6 },
+  { key: 'company', label: 'Company', type: 'text', required: false, order: 7 },
+  { key: 'source', label: 'Source', type: 'text', required: false, order: 8 },
+  { key: 'status', label: 'Status', type: 'text', required: false, order: 9 },
+  { key: 'date', label: 'Date', type: 'text', required: false, order: 10 },
 ];
 
 const FIELD_TYPES: { value: LeadFormField['type']; label: string }[] = [
@@ -31,7 +33,7 @@ interface CStatus { id: number; key: string; label: string; color: string; order
 interface CSource { id: number; key: string; label: string; order: number; is_active: boolean }
 interface FlowAction { id: number; status_key: string; status_label: string; target_module: string; action: string; is_active: boolean; description: string }
 
-type Tab = 'form' | 'statuses' | 'sources' | 'flow' | 'assign';
+type Tab = 'form' | 'statuses' | 'sources' | 'flow' | 'assign' | 'leadintegrations';
 
 const MODULE_OPTIONS = [
   { value: 'none',      label: 'Stay in CRM only' },
@@ -66,6 +68,14 @@ export default function CrmSettingsPage() {
   const [optionsRaw, setOptionsRaw] = useState<Record<number, string>>({});
   const [schemaSaving, setSchemaSaving] = useState(false);
   const [schemaLoading, setSchemaLoading] = useState(true);
+  /** Built-in fields: order, required, labels, phone preset — synced from API `default_fields` */
+  const [editedDefaults, setEditedDefaults] = useState<LeadFormField[]>(() => [...DEFAULT_LEAD_FIELDS]);
+  const [phoneRegexPresets, setPhoneRegexPresets] = useState<CrmPhoneRegexPreset[]>([]);
+
+  // ── Integrations: webhook/API guidance only ──
+  const [externalLinks, setExternalLinks] = useState<{ label: string; url: string }[]>([]);
+  const [savingExternalLinks, setSavingExternalLinks] = useState(false);
+  const [configCustomFields, setConfigCustomFields] = useState<Record<string, unknown>>({});
 
   // ── Custom Statuses ──
   const [statuses, setStatuses]       = useState<CStatus[]>([]);
@@ -96,7 +106,6 @@ export default function CrmSettingsPage() {
   const [allEmployees, setAllEmployees] = useState<{ user_id: number; name: string }[]>([]);
   const [pickedEmps, setPickedEmps]   = useState<BulkAssignEmployee[]>([]);
   const [empLoading, setEmpLoading]   = useState(true);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Load data ──
   useEffect(() => {
@@ -106,6 +115,12 @@ export default function CrmSettingsPage() {
         if (d) {
           setSchema(d);
           setSchemaFields(d.custom_fields ?? d.fields ?? []);
+          setPhoneRegexPresets(Array.isArray(d.phone_regex_presets) ? d.phone_regex_presets : []);
+          if (Array.isArray(d.default_fields) && d.default_fields.length) {
+            setEditedDefaults(
+              [...d.default_fields].sort((a: LeadFormField, b: LeadFormField) => (a.order ?? 0) - (b.order ?? 0)),
+            );
+          }
         }
       })
       .catch(() => toast.error('Failed to load form schema.'))
@@ -114,14 +129,64 @@ export default function CrmSettingsPage() {
     hrApi.employees.list()
       .then((res) => {
         const list = (res as any).data?.employees ?? [];
-        setAllEmployees(
-          list
-            .filter((e: any) => e.user_id != null)
-            .map((e: any) => ({
-              user_id: e.user_id,
-              name: `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || (e.email ?? `Employee ${e.id}`),
-            })),
-        );
+        const emps = list
+          .filter((e: any) => e.user_id != null)
+          .map((e: any) => ({
+            user_id: e.user_id,
+            name: `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || (e.email ?? `Employee ${e.id}`),
+          }));
+        setAllEmployees(emps);
+        return emps;
+      })
+      .then((emps) => configApi.get().then((cfgRes) => ({ emps, cfgRes })))
+      .then(({ emps, cfgRes }) => {
+        const wrap = cfgRes as { data?: Record<string, unknown> };
+        const cfg = wrap?.data as Record<string, unknown> | undefined;
+        const prefs = cfg?.crm_bulk_assign_defaults as
+          | {
+              assignment_type?: string;
+              pool_batch_size?: number;
+              filter_unassigned?: boolean;
+              employees?: { user_id: number; count?: number }[];
+            }
+          | undefined;
+        if (!prefs || typeof prefs !== 'object') return;
+        if (prefs.assignment_type === 'round_robin' || prefs.assignment_type === 'pool' || prefs.assignment_type === 'custom') {
+          setAssignType(prefs.assignment_type);
+        }
+        if (typeof prefs.pool_batch_size === 'number' && prefs.pool_batch_size >= 1) {
+          setPoolBatch(prefs.pool_batch_size);
+        }
+        if (typeof prefs.filter_unassigned === 'boolean') {
+          setUseUnassigned(prefs.filter_unassigned);
+        }
+        if (Array.isArray(prefs.employees) && prefs.employees.length && emps.length) {
+          const byId = new Map(emps.map((e) => [e.user_id, e.name]));
+          const picked = prefs.employees
+            .map((row) => {
+              const name = byId.get(row.user_id);
+              if (!name) return null;
+              return { user_id: row.user_id, name, count: row.count ?? 0 } as BulkAssignEmployee;
+            })
+            .filter(Boolean) as BulkAssignEmployee[];
+          if (picked.length) setPickedEmps(picked);
+        }
+        const customFields = (cfg?.custom_fields ?? {}) as Record<string, unknown>;
+        setConfigCustomFields(customFields);
+        const rawLinks = customFields.crm_external_links;
+        if (Array.isArray(rawLinks)) {
+          const links = rawLinks
+            .map((it) => {
+              if (!it || typeof it !== 'object') return null;
+              const row = it as Record<string, unknown>;
+              return {
+                label: String(row.label ?? '').trim(),
+                url: String(row.url ?? '').trim(),
+              };
+            })
+            .filter((it): it is { label: string; url: string } => !!it && !!it.url);
+          setExternalLinks(links);
+        }
       })
       .catch(() => {})
       .finally(() => setEmpLoading(false));
@@ -169,11 +234,57 @@ export default function CrmSettingsPage() {
   const removeField = (idx: number) =>
     setSchemaFields((p) => p.filter((_, i) => i !== idx));
 
+  const defaultOverridesPayload = useMemo(() => {
+    const overrides: Record<
+      string,
+      { order: number; required: boolean; label?: string; phone_preset_id?: string }
+    > = {};
+    editedDefaults.forEach((f, idx) => {
+      const base = DEFAULT_LEAD_FIELDS.find((b) => b.key === f.key);
+      const o: { order: number; required: boolean; label?: string; phone_preset_id?: string } = {
+        order: idx,
+        required: !!f.required,
+      };
+      if (base && f.label !== base.label) o.label = f.label;
+      if (f.key === 'phone') {
+        const pid = (f.phone_preset_id ?? '').trim();
+        if (pid) o.phone_preset_id = pid;
+      }
+      overrides[f.key] = o;
+    });
+    return overrides;
+  }, [editedDefaults]);
+
+  const moveDefaultField = (index: number, delta: number) => {
+    setEditedDefaults((prev) => {
+      const j = index + delta;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[j]] = [next[j], next[index]];
+      return next;
+    });
+  };
+
+  const updateDefaultField = (key: string, updates: Partial<LeadFormField>) => {
+    setEditedDefaults((prev) => prev.map((f) => (f.key === key ? { ...f, ...updates } : f)));
+  };
+
+  const moveCustomField = (index: number, delta: number) => {
+    setSchemaFields((prev) => {
+      const j = index + delta;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[j]] = [next[j], next[index]];
+      return next;
+    });
+  };
+
   const handleSaveSchema = async () => {
     setSchemaSaving(true);
     try {
       const seen = new Set<string>();
-      const withUniqueKeys = schemaFields.map((f) => {
+      const customOrderBase = editedDefaults.length;
+      const withUniqueKeys = schemaFields.map((f, idx) => {
         let key = f.key || slugifyLabel(f.label || '') || `field_${Date.now()}`;
         if (seen.has(key)) {
           let n = 2;
@@ -181,11 +292,22 @@ export default function CrmSettingsPage() {
           key = `${key}_${n}`;
         }
         seen.add(key);
-        return { ...f, key, options: (f.options ?? []).filter(Boolean) };
+        return { ...f, key, order: customOrderBase + idx, options: (f.options ?? []).filter(Boolean) };
       });
-      const res = await crmApi.leadFormSchema.update({ custom_fields: withUniqueKeys });
+      const res = await crmApi.leadFormSchema.update({
+        custom_fields: withUniqueKeys,
+        default_field_overrides: defaultOverridesPayload,
+      });
       const d = (res as any)?.data ?? res;
-      if (d) setSchema(d);
+      if (d) {
+        setSchema(d);
+        if (Array.isArray(d.phone_regex_presets)) setPhoneRegexPresets(d.phone_regex_presets);
+        if (Array.isArray(d.default_fields) && d.default_fields.length) {
+          setEditedDefaults(
+            [...d.default_fields].sort((a: LeadFormField, b: LeadFormField) => (a.order ?? 0) - (b.order ?? 0)),
+          );
+        }
+      }
       setSchemaFields(withUniqueKeys);
       toast.success('Lead form format saved.');
     } catch (err: unknown) {
@@ -303,10 +425,15 @@ export default function CrmSettingsPage() {
         assignment_type: assignType,
         employees: pickedEmps,
         pool_batch_size: poolBatch,
-      });
-      const d = (res as any)?.data;
-      toast.success(`Assigned ${d?.assigned ?? '?'} of ${d?.total ?? '?'} leads.`);
-      setPickedEmps([]);
+      }) as { message?: string; data?: { assigned?: number; total?: number; preferences_saved?: boolean } };
+      const d = res?.data;
+      const msg = res?.message;
+      if (d?.preferences_saved) {
+        toast.success(msg || 'No leads to assign yet. Your choices were saved for next time.');
+      } else {
+        toast.success(msg || `Assigned ${d?.assigned ?? 0} of ${d?.total ?? 0} leads.`);
+        setPickedEmps([]);
+      }
     } catch (err: unknown) {
       const ex = err as { response?: { data?: { message?: string } } };
       toast.error(ex?.response?.data?.message || 'Bulk assign failed.');
@@ -319,7 +446,48 @@ export default function CrmSettingsPage() {
     { key: 'sources', label: 'Lead Sources', icon: '📡' },
     { key: 'flow', label: 'Status Flow', icon: '🔀' },
     { key: 'assign', label: 'Bulk Assign', icon: '📋' },
+    { key: 'leadintegrations', label: 'Integrations', icon: '🔗' },
   ];
+
+  const webhookBaseUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.host}`
+    : '';
+
+  const addExternalLink = () => {
+    setExternalLinks((prev) => [...prev, { label: '', url: '' }]);
+  };
+
+  const updateExternalLink = (index: number, next: Partial<{ label: string; url: string }>) => {
+    setExternalLinks((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, ...next } : row)),
+    );
+  };
+
+  const removeExternalLink = (index: number) => {
+    setExternalLinks((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const saveExternalLinks = async () => {
+    const clean = externalLinks
+      .map((row) => ({ label: row.label.trim(), url: row.url.trim() }))
+      .filter((row) => !!row.url);
+    setSavingExternalLinks(true);
+    try {
+      await configApi.update({
+        custom_fields: {
+          ...configCustomFields,
+          crm_external_links: clean,
+        },
+      });
+      setConfigCustomFields((prev) => ({ ...prev, crm_external_links: clean }));
+      setExternalLinks(clean);
+      toast.success('External links saved.');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to save external links.');
+    } finally {
+      setSavingExternalLinks(false);
+    }
+  };
 
   return (
     <div>
@@ -359,7 +527,18 @@ export default function CrmSettingsPage() {
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={async () => {
+                  try {
+                    await crmApi.leadFormSchema.downloadTemplate();
+                    toast.success('Template downloaded.');
+                  } catch {
+                    toast.error('Failed to download template.');
+                  }
+                }}
+              >
                 📥 Download Template
               </button>
               <button className="btn btn-primary btn-sm" onClick={handleSaveSchema}
@@ -374,16 +553,80 @@ export default function CrmSettingsPage() {
             ) : (
               <>
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase' }}>Default fields (always shown)</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {DEFAULT_LEAD_FIELDS.map((f) => (
-                      <span key={f.key} style={{ padding: '6px 12px', background: '#f1f5f9', borderRadius: 8, fontSize: 13, color: '#475569' }}>
-                        {f.label}
-                        {f.required && <span style={{ color: '#ef4444', marginLeft: 2 }}>*</span>}
-                      </span>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase' }}>
+                    Default fields (order & validation)
+                  </div>
+                  <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+                    Reorder fields for forms and imports. Mark fields mandatory. For <strong>Contact</strong>, choose
+                    one phone format defined when the client was registered (superadmin). If none are listed, the default
+                    international digit rules apply.
+                  </p>
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+                    {editedDefaults.map((f, idx) => (
+                      <div
+                        key={f.key}
+                        style={{
+                          display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center',
+                          padding: '10px 12px', borderBottom: idx < editedDefaults.length - 1 ? '1px solid #f1f5f9' : 'none', background: '#fff',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '2px 8px' }} disabled={idx === 0} onClick={() => moveDefaultField(idx, -1)}>↑</button>
+                          <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '2px 8px' }} disabled={idx === editedDefaults.length - 1} onClick={() => moveDefaultField(idx, 1)}>↓</button>
+                        </div>
+                        <input
+                          className="form-input"
+                          value={f.label}
+                          onChange={(e) => updateDefaultField(f.key, { label: e.target.value })}
+                          style={{ width: 140, margin: 0 }}
+                          disabled={f.key === 'date'}
+                        />
+                        <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>{f.key}</span>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={!!f.required} disabled={f.key === 'date'}
+                            onChange={(e) => updateDefaultField(f.key, { required: e.target.checked })} style={{ accentColor: '#3b82f6' }} />
+                          Required
+                        </label>
+                        {f.key === 'phone' && (
+                          <div style={{ flex: 1, minWidth: 200 }}>
+                            {phoneRegexPresets.length === 0 ? (
+                              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                                No formats configured for this client. Superadmin can add them under client registration (CRM module).
+                              </span>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {phoneRegexPresets.map((p) => (
+                                  <label
+                                    key={p.id}
+                                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name="lead-phone-preset"
+                                      checked={(f.phone_preset_id ?? '') === p.id}
+                                      onChange={() => updateDefaultField(f.key, { phone_preset_id: p.id })}
+                                      style={{ accentColor: '#3b82f6' }}
+                                    />
+                                    <span>{p.label || p.id}</span>
+                                  </label>
+                                ))}
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                                  <input
+                                    type="radio"
+                                    name="lead-phone-preset"
+                                    checked={!(f.phone_preset_id ?? '').trim()}
+                                    onChange={() => updateDefaultField(f.key, { phone_preset_id: '' })}
+                                    style={{ accentColor: '#3b82f6' }}
+                                  />
+                                  <span>Default (generic international digits)</span>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
-                  <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>These appear in Add Lead, Share Form, Excel template, and the leads table.</p>
                 </div>
                 <div style={{ marginBottom: 12, fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Custom fields</div>
                 {schemaFields.length === 0 && (
@@ -393,7 +636,26 @@ export default function CrmSettingsPage() {
                 )}
                 {schemaFields.map((f, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center', padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#94a3b8', cursor: 'grab', fontSize: 16 }}>⠿</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '2px 8px' }}
+                        disabled={idx === 0}
+                        onClick={() => moveCustomField(idx, -1)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '2px 8px' }}
+                        disabled={idx === schemaFields.length - 1}
+                        onClick={() => moveCustomField(idx, 1)}
+                      >
+                        ↓
+                      </button>
+                    </div>
                     <input className="form-input" placeholder="Field label (e.g. Customer name)" value={f.label}
                       onChange={(e) => updateField(idx, { label: e.target.value })}
                       style={{ width: 180, margin: 0 }} />
@@ -429,11 +691,6 @@ export default function CrmSettingsPage() {
               </>
             )}
           </div>
-          <input ref={fileInputRef} type="button" style={{ display: 'none' }}
-            onClick={async () => {
-              try { await crmApi.leadFormSchema.downloadTemplate(); toast.success('Template downloaded.'); }
-              catch { toast.error('Failed to download template.'); }
-            }} />
         </div>
       )}
 
@@ -720,7 +977,7 @@ export default function CrmSettingsPage() {
           <div className="card-header">
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Bulk Assign Leads</h3>
             <p style={{ margin: '3px 0 0', fontSize: 13, color: '#64748b' }}>
-              Distribute unassigned leads among your employees.
+              Distribute unassigned leads among your employees. If there are no leads yet, running this still saves your strategy and team so you can use the same setup later.
             </p>
           </div>
           <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -806,6 +1063,73 @@ export default function CrmSettingsPage() {
                 disabled={assignSaving || pickedEmps.length === 0}>
                 {assignSaving ? 'Assigning…' : '📋 Run Bulk Assign'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TAB: Integrations (WhatsApp + external links) ═══ */}
+      {activeTab === 'leadintegrations' && (
+        <div className="card">
+          <div className="card-header">
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Integrations</h3>
+            <p style={{ margin: '3px 0 0', fontSize: 13, color: '#64748b' }}>
+              Use WhatsApp webhook URL below and add other external API/webhook links as needed.
+            </p>
+          </div>
+          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ padding: 14, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8, color: '#1e293b' }}>WhatsApp integration link</div>
+              <p style={{ margin: '0 0 8px', color: '#64748b' }}>
+                Use this as your WhatsApp callback URL (tenant host should match this client).
+              </p>
+              <code style={{ display: 'block', wordBreak: 'break-all', fontSize: 12, padding: 8, background: '#fff', borderRadius: 6 }}>
+                {webhookBaseUrl}/api/v1/integrations/whatsapp/webhook/
+              </code>
+              <p style={{ margin: '10px 0 0', fontSize: 12, color: '#94a3b8' }}>
+                WhatsApp GET uses your <code>WHATSAPP_VERIFY_TOKEN</code> env var. Ensure Meta sends POSTs to the correct tenant host.
+              </p>
+            </div>
+
+            <div style={{ padding: 14, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8, color: '#1e293b' }}>Other external links</div>
+              <p style={{ margin: '0 0 10px', color: '#64748b' }}>
+                Add your other API/webhook integration links here.
+              </p>
+              {externalLinks.length === 0 && (
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
+                  No external links added yet.
+                </div>
+              )}
+              {externalLinks.map((row, index) => (
+                <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <input
+                    className="form-input"
+                    placeholder="Name (e.g. Meta Lead API)"
+                    value={row.label}
+                    onChange={(e) => updateExternalLink(index, { label: e.target.value })}
+                    style={{ margin: 0, width: 220 }}
+                  />
+                  <input
+                    className="form-input"
+                    placeholder="https://example.com/webhook"
+                    value={row.url}
+                    onChange={(e) => updateExternalLink(index, { url: e.target.value })}
+                    style={{ margin: 0, flex: 1 }}
+                  />
+                  <button type="button" className="btn btn-danger btn-sm" onClick={() => removeExternalLink(index)}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={addExternalLink}>
+                  + Add link
+                </button>
+                <button type="button" className="btn btn-primary btn-sm" onClick={saveExternalLinks} disabled={savingExternalLinks}>
+                  {savingExternalLinks ? 'Saving…' : 'Save links'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

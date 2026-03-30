@@ -40,9 +40,9 @@ graph TD
     end
 
     %% Connections
-    SA -->|api.traiding.com| API_GW
-    CA -->|*.traiding.com| API_GW
-    MA -->|api.traiding.com| API_GW
+    SA -->|api.trading.com| API_GW
+    CA -->|*.trading.com| API_GW
+    MA -->|api.trading.com| API_GW
 
     TM --> AUTH
     TM --> CRM
@@ -62,7 +62,7 @@ graph TD
 
 1. **Frontend Layer**: 
    - **Super Admin Portal**: Used by the platform owner to manage subscriptions, create tenants, and define which modules a tenant can access. 
-   - **Client Portal**: A separate React app accessed via subdomains (e.g., `company1.traiding.com`). This is where clients configure their own roles, employees, and workflows.
+   - **Client Portal**: A separate React app accessed via subdomains (e.g., `company1.trading.com`). This is where clients configure their own roles, employees, and workflows.
    - **Mobile App**: A unified Flutter application that dynamically enables/disables modules based on the logged-in tenant's configuration.
 
 2. **API & Middleware Layer**:

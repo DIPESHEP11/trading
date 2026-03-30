@@ -1,11 +1,11 @@
-# Traiding — Multi-Tenant SaaS Platform
+# Trading — Multi-Tenant SaaS Platform
 
 A full-stack multi-tenant web application built with **React + Vite** (frontend) and **Python Django** (backend), designed for separate hosting.
 
 ## Project Structure
 
 ```
-traiding/
+trading/
 ├── backend/     # Django REST Framework API
 └── frontend/    # React + Vite + TypeScript
 ```
@@ -36,7 +36,7 @@ cp .env.example .env
 # Edit .env with your DB credentials and secrets
 
 # 4. Create the database (in psql)
-# CREATE DATABASE traiding_db;
+# CREATE DATABASE trading_db;
 
 # 5. Run migrations
 python manage.py migrate_schemas --shared   # creates shared schema

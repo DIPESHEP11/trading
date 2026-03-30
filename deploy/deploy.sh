@@ -1,16 +1,16 @@
 #!/bin/bash
-# Deployment script for Traiding
+# Deployment script for Trading
 # Run from project root: ./deploy/deploy.sh
 # Or: bash deploy/deploy.sh
 # Set PROJECT_ROOT if deploying elsewhere:
-#   PROJECT_ROOT=/var/www/traiding ./deploy/deploy.sh
+#   PROJECT_ROOT=/var/www/trading ./deploy/deploy.sh
 
 set -e
 
-PROJECT_ROOT="${PROJECT_ROOT:-/var/www/traiding}"
+PROJECT_ROOT="${PROJECT_ROOT:-/var/www/trading}"
 cd "$PROJECT_ROOT"
 
-echo "Deploying Traiding..."
+echo "Deploying Trading..."
 
 # Backend
 cd "$PROJECT_ROOT/backend"
@@ -18,7 +18,7 @@ source venv/bin/activate
 pip install -r requirements/production.txt --quiet
 python manage.py migrate_schemas
 python manage.py collectstatic --noinput
-sudo systemctl restart traiding
+sudo systemctl restart trading
 
 # Frontend
 cd "$PROJECT_ROOT/frontend/client"

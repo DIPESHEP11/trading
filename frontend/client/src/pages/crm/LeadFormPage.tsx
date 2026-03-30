@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { crmApi } from '@/api/crmApi';
 import type { LeadFormField } from '@/types';
+import { restrictTo10Digits } from '@/utils/phone';
 
 export default function LeadFormPage() {
   const [fields, setFields] = useState<LeadFormField[]>([]);
@@ -112,6 +113,18 @@ export default function LeadFormPage() {
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
+              ) : f.type === 'phone' ? (
+                <input
+                  className="form-input"
+                  type="tel"
+                  maxLength={f.pattern ? 24 : 10}
+                  value={formData[f.key] || ''}
+                  onChange={(e) => handleChange(
+                    f.key,
+                    f.pattern ? e.target.value.replace(/[^\d+()\s-]/g, '') : restrictTo10Digits(e.target.value),
+                  )}
+                  required={f.required}
+                />
               ) : (
                 <input
                   className="form-input"

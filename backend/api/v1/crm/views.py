@@ -7,11 +7,16 @@ from django.http import HttpResponse
 from openpyxl import Workbook
 from apps.crm.models import (
     Lead, Customer, LeadActivity, LeadFormSchema, LeadSource,
-    CustomLeadStatus, CustomLeadSource, StatusFlowAction,
+    CustomLeadStatus, CustomLeadSource, StatusFlowAction, LeadAssignmentConfig,
 )
 from apps.crm.constants import (
     DEFAULT_LEAD_FIELDS, LEAD_CORE_KEYS, CUSTOM_DATA_KEYS, DISPLAY_ONLY_KEYS,
 )
+from apps.crm.lead_form_utils import (
+    merge_default_fields, effective_form_fields, validate_required_from_schema,
+    validate_phone_value,
+)
+from apps.crm.assignment import auto_assign_lead_from_bulk_defaults
 from apps.core.responses import success_response, error_response
 from apps.core.permissions import IsStaffOrAbove, IsTenantAdmin
 from apps.config.utils import log_module_history
@@ -21,6 +26,12 @@ from .serializers import (
     CustomLeadStatusSerializer, CustomLeadSourceSerializer,
     StatusFlowActionSerializer,
 )
+from .assignment_serializers import LeadAssignmentConfigSerializer
+
+
+def _crm_tenant():
+    from django.db import connection
+    return getattr(connection, 'tenant', None)
 
 
 def _auto_link_customer(lead):
@@ -58,6 +69,16 @@ class LeadListCreateView(generics.ListCreateAPIView):
     """GET POST /api/v1/crm/leads/"""
     permission_classes = [IsStaffOrAbove]
 
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        try:
+            s, _ = LeadFormSchema.objects.get_or_create(pk=1, defaults={'fields': []})
+            ctx['lead_form_schema'] = s
+        except Exception:
+            ctx['lead_form_schema'] = None
+        ctx['tenant'] = _crm_tenant()
+        return ctx
+
     def get_serializer_class(self):
         if self.request.method == 'GET':
             return LeadListSerializer
@@ -89,6 +110,7 @@ class LeadListCreateView(generics.ListCreateAPIView):
         serializer.is_valid(raise_exception=True)
         lead = serializer.save()
         _auto_link_customer(lead)
+        auto_assign_lead_from_bulk_defaults(lead)
         LeadActivity.objects.create(
             lead=lead, activity_type='status_change',
             description=f'Lead created with status: {lead.status}',
@@ -222,6 +244,16 @@ class LeadDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsStaffOrAbove]
     queryset = Lead.objects.all()
 
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        try:
+            s, _ = LeadFormSchema.objects.get_or_create(pk=1, defaults={'fields': []})
+            ctx['lead_form_schema'] = s
+        except Exception:
+            ctx['lead_form_schema'] = None
+        ctx['tenant'] = _crm_tenant()
+        return ctx
+
     def retrieve(self, request, *args, **kwargs):
         return success_response(data=LeadSerializer(self.get_object()).data)
 
@@ -277,11 +309,14 @@ class LeadFormSchemaView(APIView):
             schema = self._get_schema()
         except ValueError as e:
             return error_response(str(e), http_status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        tenant = _crm_tenant()
         ser = LeadFormSchemaSerializer(schema)
         data = dict(ser.data)
-        data['default_fields'] = DEFAULT_LEAD_FIELDS
+        merged_defaults = merge_default_fields(schema, tenant=tenant)
+        data['default_fields'] = merged_defaults
         data['custom_fields'] = schema.fields or []
-        data['fields'] = DEFAULT_LEAD_FIELDS + (schema.fields or [])
+        data['fields'] = merged_defaults + (schema.fields or [])
+        data['phone_regex_presets'] = list(getattr(tenant, 'crm_phone_regex_presets', None) or []) if tenant else []
         return success_response(data=data)
 
     def put(self, request):
@@ -294,16 +329,46 @@ class LeadFormSchemaView(APIView):
             return error_response(f'Database error: {e}', http_status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         try:
             data = dict(request.data) if hasattr(request.data, 'items') else {}
-            # Save only custom_fields; default_fields are built-in
             custom_fields = data.get('custom_fields', data.get('fields', []))
-            # Filter out default keys if client sent merged fields
             default_keys = {f['key'] for f in DEFAULT_LEAD_FIELDS}
             custom_fields = [f for f in custom_fields if f.get('key') not in default_keys]
-            serializer = LeadFormSchemaSerializer(schema, data={'fields': custom_fields}, partial=True)
+            tenant = _crm_tenant()
+            preset_ids = {str(p.get('id')) for p in (getattr(tenant, 'crm_phone_regex_presets', None) or []) if p.get('id')}
+
+            payload = {'fields': custom_fields}
+            overrides = data.get('default_field_overrides')
+            if overrides is not None and isinstance(overrides, dict):
+                clean = {}
+                for k, v in overrides.items():
+                    if k not in default_keys or not isinstance(v, dict):
+                        continue
+                    entry = {
+                        x: y for x, y in v.items()
+                        if x in ('order', 'required', 'label', 'phone_preset_id', 'pattern', 'phone_pattern')
+                    }
+                    if k == 'phone':
+                        entry.pop('pattern', None)
+                        entry.pop('phone_pattern', None)
+                        pid = entry.get('phone_preset_id')
+                        if pid is not None and str(pid).strip() and str(pid) not in preset_ids:
+                            return error_response(
+                                'Invalid phone format selection. Choose an option defined for this client.',
+                                http_status=status.HTTP_400_BAD_REQUEST,
+                            )
+                    clean[k] = entry
+                payload['default_field_overrides'] = clean
+            serializer = LeadFormSchemaSerializer(schema, data=payload, partial=True)
             serializer.is_valid(raise_exception=True)
             serializer.save()
+            schema.refresh_from_db()
             log_module_history(request, 'crm', 'settings_change', 'Lead form schema updated', 'lead_form_schema', '1', {'fields_count': len(custom_fields)})
-            return success_response(data=serializer.data, message='Lead form schema saved.')
+            out = dict(LeadFormSchemaSerializer(schema).data)
+            merged_defaults = merge_default_fields(schema, tenant=tenant)
+            out['default_fields'] = merged_defaults
+            out['custom_fields'] = schema.fields or []
+            out['fields'] = merged_defaults + (schema.fields or [])
+            out['phone_regex_presets'] = list(getattr(tenant, 'crm_phone_regex_presets', None) or []) if tenant else []
+            return success_response(data=out, message='Lead form schema saved.')
         except Exception as e:
             return error_response(f'Could not save lead form schema: {str(e)}',
                                   http_status=status.HTTP_400_BAD_REQUEST)
@@ -315,8 +380,16 @@ class LeadFormPublicView(APIView):
 
     def get(self, request):
         schema, _ = LeadFormSchema.objects.get_or_create(pk=1, defaults={'fields': []})
-        # Exclude display-only (date) from form; merge default + custom
-        form_fields = [f for f in DEFAULT_LEAD_FIELDS if f['key'] not in DISPLAY_ONLY_KEYS] + (schema.fields or [])
+        tenant = _crm_tenant()
+        form_fields = effective_form_fields(schema, exclude_display_only=True, tenant=tenant)
+        # Source should be a dropdown from tenant's configured lead sources.
+        source_opts = list(CustomLeadSource.objects.order_by('order', 'id').values_list('key', flat=True))
+        if source_opts:
+            for f in form_fields:
+                if f.get('key') == 'source':
+                    f['type'] = 'select'
+                    f['options'] = source_opts
+                    break
         return success_response(data={'fields': form_fields})
 
 
@@ -327,9 +400,15 @@ class LeadSubmitView(APIView):
 
     def post(self, request):
         schema, _ = LeadFormSchema.objects.get_or_create(pk=1, defaults={'fields': []})
-        all_fields = [f for f in DEFAULT_LEAD_FIELDS if f['key'] not in DISPLAY_ONLY_KEYS] + (schema.fields or [])
+        tenant = _crm_tenant()
+        all_fields = effective_form_fields(schema, exclude_display_only=True, tenant=tenant)
 
         data = request.data if isinstance(request.data, dict) else dict(request.data)
+        ok, err_msg, err_key = validate_required_from_schema(schema, data, tenant=tenant)
+        if not ok:
+            return error_response(err_msg, errors={err_key: [err_msg]} if err_key else None,
+                                  http_status=status.HTTP_400_BAD_REQUEST)
+
         custom_data = {}
         name = ''
         email = ''
@@ -367,8 +446,10 @@ class LeadSubmitView(APIView):
         if not phone:
             phone = (data.get('mobile') or data.get('contact') or data.get('contact_number') or '').strip()
 
+        source_in = (data.get('source') or '').strip()
+        valid_source = CustomLeadSource.objects.filter(key=source_in).exists() if source_in else False
         lead = Lead.objects.create(
-            source=LeadSource.FORM,
+            source=source_in if valid_source else LeadSource.FORM,
             status='new',
             name=name or 'Form submission',
             email=email or '',
@@ -377,6 +458,7 @@ class LeadSubmitView(APIView):
             custom_data=custom_data,
         )
         _auto_link_customer(lead)
+        auto_assign_lead_from_bulk_defaults(lead)
         log_module_history(request, 'crm', 'create', f'Lead from form: {lead.name}', 'lead', str(lead.pk))
         return success_response(
             data={'id': lead.id},
@@ -391,8 +473,8 @@ class LeadFormTemplateView(APIView):
 
     def get(self, request):
         schema, _ = LeadFormSchema.objects.get_or_create(pk=1, defaults={'fields': []})
-        # Default + custom fields; exclude date (display-only)
-        form_defaults = [f for f in DEFAULT_LEAD_FIELDS if f['key'] != 'date']
+        tenant = _crm_tenant()
+        form_defaults = [f for f in merge_default_fields(schema, tenant=tenant) if f['key'] not in DISPLAY_ONLY_KEYS]
         fields = form_defaults + (schema.fields or [])
         fields = sorted(fields, key=lambda f: f.get('order', 999))
         seen = set()
@@ -430,8 +512,8 @@ class LeadFormImportView(APIView):
             return error_response('File must be Excel (.xlsx).', http_status=status.HTTP_400_BAD_REQUEST)
 
         schema, _ = LeadFormSchema.objects.get_or_create(pk=1, defaults={'fields': []})
-        # Default + custom column names for import
-        form_defaults = [f for f in DEFAULT_LEAD_FIELDS if f['key'] != 'date']
+        tenant = _crm_tenant()
+        form_defaults = [f for f in merge_default_fields(schema, tenant=tenant) if f['key'] not in DISPLAY_ONLY_KEYS]
         all_field_keys = {f['key'] for f in form_defaults} | {f.get('key') for f in (schema.fields or []) if f.get('key')}
 
         try:
@@ -449,7 +531,7 @@ class LeadFormImportView(APIView):
         if len(rows) > MAX_ROWS:
             return error_response(f'Maximum {MAX_ROWS} rows allowed.', http_status=status.HTTP_400_BAD_REQUEST)
 
-        core_keys = {'name', 'email', 'phone', 'company', 'source', 'status'}
+        core_keys = {'name', 'email', 'phone', 'company', 'source'}
         created = 0
         errors = []
         for i, row in enumerate(rows):
@@ -466,10 +548,21 @@ class LeadFormImportView(APIView):
             phone = (data.get('phone') or data.get('mobile') or data.get('contact') or data.get('contact_number') or data.get('contact_numbe') or '').strip()
             company = (data.get('company') or '').strip()
             source_val = (data.get('source') or 'excel').strip() or 'excel'
-            status_val = (data.get('status') or 'new').strip() or 'new'
+            status_val = 'new'
             custom_data = {k: v for k, v in data.items() if k not in core_keys and v}
             if not name:
                 name = email or phone or f'Row {row_num}'
+            row_dict = {k: v for k, v in data.items()}
+            ok_req, req_msg, _ = validate_required_from_schema(schema, row_dict, tenant=tenant)
+            if not ok_req:
+                errors.append({'row': row_num, 'message': req_msg})
+                continue
+            phone_field = next((f for f in merge_default_fields(schema, tenant=tenant) if f['key'] == 'phone'), None)
+            if phone:
+                pok, perr = validate_phone_value(phone, (phone_field or {}).get('pattern') if phone_field else None)
+                if not pok:
+                    errors.append({'row': row_num, 'message': perr})
+                    continue
             try:
                 lead = Lead.objects.create(
                     source=source_val,
@@ -481,6 +574,7 @@ class LeadFormImportView(APIView):
                     custom_data=custom_data,
                 )
                 _auto_link_customer(lead)
+                auto_assign_lead_from_bulk_defaults(lead)
                 created += 1
             except Exception as e:
                 errors.append({'row': row_num, 'message': str(e)})
@@ -488,6 +582,29 @@ class LeadFormImportView(APIView):
         if created:
             log_module_history(request, 'crm', 'create', f'Bulk import: {created} leads', 'lead', '', {'count': created})
         return success_response(data={'created': created, 'errors': errors}, message=f'Imported {created} leads.')
+
+
+class LeadAssignmentConfigView(APIView):
+    """
+    GET PUT /api/v1/crm/lead-assignment/
+    Legacy endpoint retained for backward compatibility.
+    New lead assignment now uses CRM Bulk Assign defaults.
+    """
+
+    def get_permissions(self):
+        return [IsTenantAdmin()]
+
+    def get(self, request):
+        cfg, _ = LeadAssignmentConfig.objects.get_or_create(pk=1, defaults={'strategy': 'off'})
+        return success_response(data=LeadAssignmentConfigSerializer(cfg).data)
+
+    def put(self, request):
+        cfg, _ = LeadAssignmentConfig.objects.get_or_create(pk=1, defaults={'strategy': 'off'})
+        serializer = LeadAssignmentConfigSerializer(cfg, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_module_history(request, 'crm', 'settings_change', 'Lead auto-assignment by source updated', 'lead_assignment', '1', {})
+        return success_response(data=serializer.data, message='Assignment rules saved.')
 
 
 class LeadAssignView(APIView):
@@ -587,7 +704,10 @@ class LeadBulkAssignView(APIView):
     permission_classes = [IsTenantAdmin]
 
     def post(self, request):
+        from django.db import connection
         from apps.users.models import User
+        from apps.hr.models import EmployeeProfile
+        from apps.config.models import TenantConfig
 
         lead_ids          = request.data.get('lead_ids', [])
         filter_unassigned = request.data.get('filter_unassigned', False)
@@ -595,22 +715,11 @@ class LeadBulkAssignView(APIView):
         employees_data    = request.data.get('employees', [])   # [{user_id, count?}]
         pool_batch_size   = int(request.data.get('pool_batch_size', 4))
 
-        # Resolve leads
-        if lead_ids:
-            leads = list(Lead.objects.filter(id__in=lead_ids))
-        elif filter_unassigned:
-            leads = list(Lead.objects.filter(assigned_to__isnull=True))
-        else:
-            return error_response('Provide lead_ids or set filter_unassigned=true.')
-
-        if not leads:
-            return error_response('No leads found to assign.')
         if not employees_data:
             return error_response('Provide at least one employee.')
 
         # Resolve User for each employee; backend expects user_id, but also accepts
         # employee_id (EmployeeProfile pk) when frontend sent wrong id
-        from apps.hr.models import EmployeeProfile
         resolved = []  # [(user, count), ...]; count used only for custom mode
         seen = set()
         for e in employees_data:
@@ -636,6 +745,37 @@ class LeadBulkAssignView(APIView):
         employees = [r[0] for r in resolved]
         if not employees:
             return error_response('No valid employees found. Ensure employees have linked user accounts.')
+
+        # Resolve leads
+        if lead_ids:
+            leads = list(Lead.objects.filter(id__in=lead_ids))
+        elif filter_unassigned:
+            leads = list(Lead.objects.filter(assigned_to__isnull=True))
+        else:
+            return error_response('Provide lead_ids or set filter_unassigned=true.')
+
+        if not leads:
+            tenant = getattr(connection, 'tenant', None)
+            if tenant:
+                config, _ = TenantConfig.objects.get_or_create(tenant=tenant)
+                config.crm_bulk_assign_defaults = {
+                    'assignment_type': assignment_type,
+                    'pool_batch_size': pool_batch_size,
+                    'filter_unassigned': bool(filter_unassigned),
+                    'employees': [{'user_id': u.id, 'count': c} for u, c in resolved],
+                }
+                config.save(update_fields=['crm_bulk_assign_defaults', 'updated_at'])
+            return success_response(
+                data={
+                    'assigned': 0,
+                    'total': 0,
+                    'preferences_saved': True,
+                },
+                message=(
+                    'No unassigned leads right now. Your strategy and selected employees were saved — '
+                    'return here or run bulk assign from Leads when new leads are available.'
+                ),
+            )
 
         assigned = 0
 
@@ -669,7 +809,7 @@ class LeadBulkAssignView(APIView):
 
         elif assignment_type == 'custom':
             idx = 0
-            for emp, count in resolved_pairs:
+            for emp, count in resolved:
                 if count <= 0:
                     continue
                 for _ in range(count):

@@ -16,8 +16,8 @@ keepalive = 2
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.production")
 
 # Logging (optional - comment out if not using /var/log/gunicorn)
-# accesslog = "/var/log/gunicorn/traiding-access.log"
-# errorlog = "/var/log/gunicorn/traiding-error.log"
+# accesslog = "/var/log/gunicorn/trading-access.log"
+# errorlog = "/var/log/gunicorn/trading-error.log"
 loglevel = "info"
 
-proc_name = "traiding"
+proc_name = "trading"

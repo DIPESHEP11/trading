@@ -35,6 +35,12 @@ export interface AuthResponse {
 
 // ─── Tenant ────────────────────────────────────────────────────────────────
 
+export interface CrmPhoneRegexPreset {
+  id: string;
+  label: string;
+  pattern: string;
+}
+
 export interface Tenant {
   id: number;
   name: string;
@@ -44,6 +50,7 @@ export interface Tenant {
   is_active: boolean;
   created_on: string;
   domain?: string;
+  crm_phone_regex_presets?: CrmPhoneRegexPreset[];
 }
 
 // ─── Tenant Config (Flutter endpoint) ─────────────────────────────────────

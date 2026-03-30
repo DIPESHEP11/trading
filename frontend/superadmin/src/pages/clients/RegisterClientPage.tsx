@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { clientApi, type RegisterClientPayload } from '@/api/clientApi';
 import { planApi } from '@/api/planApi';
 import { restrictTo10Digits } from '@/utils/phone';
-import type { Plan } from '@/types';
+import type { Plan, CrmPhoneRegexPreset } from '@/types';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 type Step = 1 | 2 | 3 | 4;
@@ -100,6 +100,8 @@ export default function RegisterClientPage() {
             module_analytics: !!(t as { module_analytics?: boolean }).module_analytics,
           });
         }
+        const presets = (t as { crm_phone_regex_presets?: CrmPhoneRegexPreset[] }).crm_phone_regex_presets;
+        if (Array.isArray(presets)) setCrmPhoneRegexPresets(presets);
       })
       .catch(() => toast.error('Failed to load client.'));
   }, [existingTenantId]);
@@ -115,6 +117,8 @@ export default function RegisterClientPage() {
 
   // Step 2 — Modules
   const [modules, setModules] = useState({ ...defaultModules });
+  /** Shown when CRM is enabled; sent on register — client admin picks one in CRM settings */
+  const [crmPhoneRegexPresets, setCrmPhoneRegexPresets] = useState<CrmPhoneRegexPreset[]>([]);
 
   // Step 3 — Business Model & Plan
   const [businessModel, setBusinessModel] = useState('b2b');
@@ -197,6 +201,9 @@ export default function RegisterClientPage() {
           domain: domain || `${name.toLowerCase().replace(/\s+/g, '-')}.localhost`,
           logo: logoFile,
           ...modules,
+          crm_phone_regex_presets: modules.module_crm
+            ? crmPhoneRegexPresets.filter((p) => p.pattern.trim())
+            : [],
           admin: {
             email: adminEmail,
             first_name: adminFirstName,
@@ -402,6 +409,64 @@ export default function RegisterClientPage() {
                   );
                 })}
               </div>
+
+              {modules.module_crm && (
+                <div style={{ marginTop: 8, paddingTop: 24, borderTop: '1px solid var(--color-border)' }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: 'var(--color-text-primary)' }}>
+                    CRM — contact phone formats
+                  </h3>
+                  <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 14, lineHeight: 1.45 }}>
+                    Optional. The client admin chooses one format for the Contact field in CRM settings. Each row is a
+                    display label and a full-string regex (e.g. Indian 10-digit:{' '}
+                    <code style={{ fontSize: 11 }}>^[0-9]&#123;10&#125;$</code>).
+                  </p>
+                  {crmPhoneRegexPresets.map((row, i) => (
+                    <div
+                      key={i}
+                      style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}
+                    >
+                      <input
+                        className="form-input"
+                        placeholder="Label (e.g. India 10-digit)"
+                        value={row.label}
+                        onChange={(e) => {
+                          const next = [...crmPhoneRegexPresets];
+                          next[i] = { ...row, label: e.target.value };
+                          setCrmPhoneRegexPresets(next);
+                        }}
+                        style={{ flex: '1 1 160px', margin: 0 }}
+                      />
+                      <input
+                        className="form-input"
+                        placeholder="Regex pattern"
+                        value={row.pattern}
+                        onChange={(e) => {
+                          const next = [...crmPhoneRegexPresets];
+                          next[i] = { ...row, pattern: e.target.value };
+                          setCrmPhoneRegexPresets(next);
+                        }}
+                        style={{ flex: '2 1 220px', margin: 0, fontFamily: 'monospace', fontSize: 12 }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={() => setCrmPhoneRegexPresets(crmPhoneRegexPresets.filter((_, j) => j !== i))}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() =>
+                      setCrmPhoneRegexPresets([...crmPhoneRegexPresets, { id: '', label: '', pattern: '' }])
+                    }
+                  >
+                    + Add format
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

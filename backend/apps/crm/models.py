@@ -121,8 +121,14 @@ class LeadFormSchema(TimeStampedModel):
     Defines which custom fields a lead has. Locked once any lead exists.
     fields: [{"key": "customer_name", "label": "Customer Name", "type": "text", "required": true, "order": 1}, ...]
     Supported types: text, email, phone, number, textarea, select (options in definition).
+    default_field_overrides: {"phone": {"order": 1, "required": true, "pattern": "^[0-9]{10}$"}, ...}
     """
     fields = models.JSONField(default=list)  # list of field definitions
+    default_field_overrides = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Overrides for built-in fields: order, required, label, pattern (regex for phone).',
+    )
 
     class Meta:
         verbose_name = 'Lead Form Schema'
@@ -193,6 +199,18 @@ class LeadAssignmentConfig(TimeStampedModel):
 
     # Round-robin pointer: index of the next employee to assign
     rr_pointer = models.IntegerField(default=0)
+
+    # Auto-assign incoming leads (webhooks / API) by source key → list of user IDs (round-robin)
+    assignments_by_source = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='e.g. {"meta": [1,2], "whatsapp": [3]} — user pk list per Lead.source',
+    )
+    source_rr_pointers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Internal next index per source for round-robin.',
+    )
 
     is_active = models.BooleanField(default=True)
 

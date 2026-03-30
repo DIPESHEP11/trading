@@ -1,13 +1,13 @@
 # 6. Flutter Dynamic Module Architecture
 
-The Traiding Mobile App is a single codebase built with **Flutter**. It is distributed to the App Store and Google Play as a universal app. Once a user logs in, the app morphs its UI to fit their company's configured modules.
+The Trading Mobile App is a single codebase built with **Flutter**. It is distributed to the App Store and Google Play as a universal app. Once a user logs in, the app morphs its UI to fit their company's configured modules.
 
 ## How the Mobile App Knows What to Show
 
 1. **Login Event**: 
    The user enters their Company Subdomain (e.g., `oriol`), Email, and Password.
 2. **API Handshake**:
-   The app calls `https://oriol.traiding.com/api/v1/auth/login/` and subsequently `/api/v1/auth/me/`.
+   The app calls `https://oriol.trading.com/api/v1/auth/login/` and subsequently `/api/v1/auth/me/`.
 3. **The Payload**:
    The API returns not just the User Profile and JWT, but the **Tenant Configuration Object**.
 

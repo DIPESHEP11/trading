@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     LeadListCreateView, LeadDetailView, LeadAssignView, LeadBulkAssignView,
+    LeadAssignmentConfigView,
     LeadFormSchemaView, LeadFormPublicView, LeadSubmitView,
     LeadFormTemplateView, LeadFormImportView,
     CustomerListCreateView, CustomerDetailView, CustomerLeadsView,
@@ -12,6 +13,7 @@ from .views import (
 urlpatterns = [
     path('leads/', LeadListCreateView.as_view(), name='lead-list'),
     path('leads/bulk-assign/', LeadBulkAssignView.as_view(), name='lead-bulk-assign'),
+    path('lead-assignment/', LeadAssignmentConfigView.as_view(), name='lead-assignment-config'),
     path('leads/<int:pk>/', LeadDetailView.as_view(), name='lead-detail'),
     path('leads/<int:pk>/assign/', LeadAssignView.as_view(), name='lead-assign'),
     path('lead-form-schema/', LeadFormSchemaView.as_view(), name='lead-form-schema'),

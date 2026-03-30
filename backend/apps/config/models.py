@@ -54,6 +54,13 @@ class TenantConfig(TimeStampedModel):
     fast_moving_alert_enabled = models.BooleanField(default=True,
         help_text='Send email + show in-app alert when product is fast-moving in a month.')
 
+    # CRM — saved "Bulk assign" choices when there are zero matching leads (reloaded in CRM Settings).
+    crm_bulk_assign_defaults = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Last saved bulk-assign UI: assignment_type, pool_batch_size, filter_unassigned, employees.',
+    )
+
     class Meta:
         verbose_name = 'Tenant Configuration'
 
@@ -95,6 +102,7 @@ class TenantConfig(TimeStampedModel):
             'buffer_stock_default': getattr(self, 'buffer_stock_default', None),
             'buffer_stock_auto_enabled': getattr(self, 'buffer_stock_auto_enabled', False),
             'fast_moving_alert_enabled': getattr(self, 'fast_moving_alert_enabled', True),
+            'crm_bulk_assign_defaults': getattr(self, 'crm_bulk_assign_defaults', None) or {},
         }
 
 

@@ -1,6 +1,6 @@
 # 2. Multi-Tenant Database Design
 
-The Traiding platform uses PostgreSQL with `django-tenants`. Instead of adding a `tenant_id` foreign key to every single row (Row-Level Security) or using separate databases (Physical Segregation), this project implements **Schema-Level Isolation**.
+The Trading platform uses PostgreSQL with `django-tenants`. Instead of adding a `tenant_id` foreign key to every single row (Row-Level Security) or using separate databases (Physical Segregation), this project implements **Schema-Level Isolation**.
 
 ## Architecture Overview
 
@@ -12,7 +12,7 @@ erDiagram
     PUBLIC_SCHEMA {
         int id PK
         string schema_name "e.g., oriol_schema"
-        string domain_url "e.g., oriol.traiding.com"
+        string domain_url "e.g., oriol.trading.com"
         object global_settings
     }
 

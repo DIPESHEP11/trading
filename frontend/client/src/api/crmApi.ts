@@ -29,8 +29,11 @@ export const crmApi = {
   },
   leadFormSchema: {
     get: () => axiosInstance.get('/crm/lead-form-schema/').then((r) => r.data),
-    update: (data: { fields?: LeadFormSchema['fields']; custom_fields?: LeadFormSchema['fields'] }) =>
-      axiosInstance.put('/crm/lead-form-schema/', data).then((r) => r.data),
+    update: (data: {
+      fields?: LeadFormSchema['fields'];
+      custom_fields?: LeadFormSchema['fields'];
+      default_field_overrides?: Record<string, { order?: number; required?: boolean; label?: string; pattern?: string }>;
+    }) => axiosInstance.put('/crm/lead-form-schema/', data).then((r) => r.data),
     downloadTemplate: () =>
       axiosInstance.get('/crm/lead-form-schema/template/', { responseType: 'blob' }).then((r) => {
         const url = window.URL.createObjectURL(r.data);
@@ -47,6 +50,10 @@ export const crmApi = {
         headers: { 'Content-Type': 'multipart/form-data' },
       }).then((r) => r.data);
     },
+  },
+  leadAssignment: {
+    get: () => axiosInstance.get('/crm/lead-assignment/').then((r) => r.data),
+    update: (data: Record<string, unknown>) => axiosInstance.put('/crm/lead-assignment/', data).then((r) => r.data),
   },
   leadFormPublic: {
     getSchema: () => axiosInstance.get('/crm/lead-form-public/').then((r) => r.data),

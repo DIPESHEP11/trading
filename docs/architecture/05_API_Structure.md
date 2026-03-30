@@ -1,11 +1,11 @@
 # 5. API Structure (Django REST Framework)
 
-The Traiding backend uses Django REST Framework (DRF) to serve JSON to the React Portals and the Flutter Mobile App. The API heavily utilizes dynamic routing based on subdomains (the `django-tenants` middleware extracts the tenant from the Host header).
+The Trading backend uses Django REST Framework (DRF) to serve JSON to the React Portals and the Flutter Mobile App. The API heavily utilizes dynamic routing based on subdomains (the `django-tenants` middleware extracts the tenant from the Host header).
 
 ## Subdomain Routing Principle
 
-- **Platform Admin Requests**: Addressed to `admin.traiding.com/api/v1/...`
-- **Tenant Requests**: Addressed to `<tenant_slug>.traiding.com/api/v1/...` (e.g., `oriol.traiding.com`)
+- **Platform Admin Requests**: Addressed to `admin.trading.com/api/v1/...`
+- **Tenant Requests**: Addressed to `<tenant_slug>.trading.com/api/v1/...` (e.g., `oriol.trading.com`)
 
 ## 1. Global Endpoints (Public Schema)
 

@@ -97,7 +97,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django_tenants.postgresql_backend',
-        'NAME': config('DB_NAME', default='traiding_db'),
+        'NAME': config('DB_NAME', default='trading_db'),
         'USER': config('DB_USER', default='postgres'),
         'PASSWORD': config('DB_PASSWORD', default='postgres'),
         'HOST': config('DB_HOST', default='localhost'),
@@ -187,4 +187,4 @@ WHATSAPP_VERIFY_TOKEN = config('WHATSAPP_VERIFY_TOKEN', default='whatsapp_verify
 FRONTEND_CLIENT_URL = config('FRONTEND_CLIENT_URL', default='http://localhost:5174')
 
 # Email — used as sender for password reset etc.
-DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@traiding.local')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@trading.local')

@@ -4,6 +4,28 @@ from django.conf import settings
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
+
+class Role(TimeStampedModel):
+    """
+    Custom role created by client admin.
+    Each role has default module permissions; employees assigned this role
+    inherit these defaults. Individual employees can have extra permissions
+    assigned via EmployeeModulePermission (overrides/additions).
+    """
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    # JSON: {"crm": {"can_view": true, "can_create": true, ...}, "products": {...}}
+    default_permissions = models.JSONField(default=dict, blank=True)
+    display_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
 class EmployeeProfile(TimeStampedModel):
     """
     Extends the shared User model with tenant-specific HR / Employee details.
@@ -35,6 +57,14 @@ class EmployeeProfile(TimeStampedModel):
     emergency_contact_phone = models.CharField(max_length=20, blank=True)
 
     # ── Company Details ──
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='employees',
+        help_text='Custom role with default permissions. Shown in employee form dropdown.',
+    )
     department = models.CharField(max_length=100, blank=True)
     designation = models.CharField(max_length=100, blank=True, help_text="Job title")
     salary = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
@@ -58,7 +88,22 @@ class EmployeeProfile(TimeStampedModel):
 
     def __str__(self):
         return f"{self.employee_id} - {self.user.email}"
-        
+
+    @property
+    def email(self):
+        """For serializer read: email comes from linked user."""
+        return self.user.email if self.user else None
+
+    @property
+    def first_name(self):
+        """For serializer read: first_name comes from linked user."""
+        return self.user.first_name if self.user else None
+
+    @property
+    def last_name(self):
+        """For serializer read: last_name comes from linked user."""
+        return self.user.last_name if self.user else None
+
     @property
     def tenure(self) -> str:
         """

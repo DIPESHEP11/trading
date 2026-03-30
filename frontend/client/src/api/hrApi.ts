@@ -3,7 +3,29 @@ import type { Employee, EmployeeCustomField, EmployeeDocument } from '@/types';
 
 const BASE = '/hr';
 
+export interface Role {
+  id: number;
+  name: string;
+  description: string;
+  default_permissions: Record<string, PermFlags>;
+  display_order: number;
+  is_active: boolean;
+}
+
 export const hrApi = {
+  roles: {
+    list: () =>
+      axiosInstance.get<{ data: { roles: Role[] } }>(`${BASE}/roles/`).then(r => r.data),
+    get: (id: number) =>
+      axiosInstance.get<{ data: Role }>(`${BASE}/roles/${id}/`).then(r => r.data),
+    create: (data: Partial<Role>) =>
+      axiosInstance.post<{ data: Role }>(`${BASE}/roles/`, data).then(r => r.data),
+    update: (id: number, data: Partial<Role>) =>
+      axiosInstance.patch<{ data: Role }>(`${BASE}/roles/${id}/`, data).then(r => r.data),
+    delete: (id: number) =>
+      axiosInstance.delete(`${BASE}/roles/${id}/`).then(r => r.data),
+  },
+
   employees: {
     list: (params?: Record<string, string | boolean | number>) =>
       axiosInstance.get<{ data: { employees: Employee[]; count: number } }>(`${BASE}/employees/`, { params }).then(r => r.data),
@@ -46,7 +68,7 @@ export const hrApi = {
       axiosInstance.get<{ data: EmployeePermSummary[] }>(`${BASE}/permissions/`).then(r => r.data),
     get: (employeeProfileId: number) =>
       axiosInstance
-        .get<{ data: { employee: EmployeePermSummary; permissions: ModulePermission[] } }>(`${BASE}/permissions/`, { params: { employee: employeeProfileId } })
+        .get<{ data: { employee: EmployeePermSummary; role_defaults: Record<string, PermFlags>; permissions: Record<string, PermFlags> } }>(`${BASE}/permissions/`, { params: { employee: employeeProfileId } })
         .then(r => r.data),
     save: (employeeProfileId: number, permissions: Record<string, PermFlags>) =>
       axiosInstance
@@ -66,6 +88,8 @@ export interface EmployeePermSummary {
   user_id: number;
   department: string;
   designation: string;
+  role_id: number | null;
+  role_name: string | null;
 }
 
 export interface PermFlags {
