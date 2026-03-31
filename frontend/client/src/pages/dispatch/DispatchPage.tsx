@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoicesApi } from '@/api/businessApi';
 import toast from 'react-hot-toast';
 import type { DispatchSettings, DispatchSticker } from '@/types';
@@ -73,8 +73,8 @@ export default function DispatchPage() {
       }).catch(() => setDispatchSettings(null));
       invoicesApi
         .list({})
-        .then((r: { data?: { invoices?: { id: number; invoice_number: string; recipient_name: string }[] } }) => {
-          const inv = (r?.data ?? r)?.invoices ?? [];
+        .then((r: { data?: { invoices?: { id: number; invoice_number: string; recipient_name: string }[] }; invoices?: { id: number; invoice_number: string; recipient_name: string }[] }) => {
+          const inv = r?.data?.invoices ?? r?.invoices ?? [];
           setInvoices(inv);
           if (inv.length && !createForm.invoice_id) setCreateForm((p) => ({ ...p, invoice_id: String(inv[0].id) }));
         })

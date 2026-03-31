@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { stockApi } from '@/api/businessApi';
 import LeadDetailsCard from '@/components/LeadDetailsCard';
 import toast from 'react-hot-toast';
@@ -40,13 +40,6 @@ interface Counts {
   rejected: number;
   total: number;
 }
-
-const DEFAULT_TABS = [
-  { key: '',         label: 'All' },
-  { key: 'pending',  label: 'Pending' },
-  { key: 'approved', label: 'Approved' },
-  { key: 'rejected', label: 'Rejected' },
-];
 
 const SOURCE_LABELS: Record<string, string> = {
   orders: 'Orders',

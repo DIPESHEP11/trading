@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { invoicesApi } from '@/api/businessApi';
 import { restrictTo10Digits } from '@/utils/phone';
 import toast from 'react-hot-toast';
@@ -71,7 +71,6 @@ function getFlowActionsList(res: unknown): DispatchFlowAction[] {
 
 export default function DispatchSettingsPage() {
   const [fromAddressOptions, setFromAddressOptions] = useState<{ label: string; name: string; address: string }[]>([]);
-  const [settings, setSettings] = useState<DispatchSettingsType | null>(null);
   const [partners, setPartners] = useState<CourierPartner[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -125,7 +124,6 @@ export default function DispatchSettingsPage() {
       if (settingsResult.status === 'fulfilled') {
         const settingsData = getSettingsData(settingsResult.value);
         if (settingsData) {
-          setSettings(settingsData);
           setFlow(settingsData.flow_after_dispatch);
           setTrackingStatus((settingsData.default_tracking_status as DefaultTrackingStatus) ?? '');
           const fromOptions = Array.isArray(settingsData.from_address_options)
@@ -206,9 +204,7 @@ export default function DispatchSettingsPage() {
           address: (opt.address || '').trim(),
         }))
         .filter((opt) => opt.name && opt.address);
-      const res = await invoicesApi.dispatch.settings.update(payload);
-      const data = getSettingsData(res);
-      if (data) setSettings(data);
+      await invoicesApi.dispatch.settings.update(payload);
       toast.success('Dispatch settings saved.');
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;

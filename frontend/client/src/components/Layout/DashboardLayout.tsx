@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/api/authApi';
@@ -7,7 +7,7 @@ import { hrApi } from '@/api/hrApi';
 import type { TenantConfig, TenantModules } from '@/types';
 import toast from 'react-hot-toast';
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, logout, refreshToken } = useAuthStore();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -36,7 +36,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .my()
       .then((res) => {
         const modules = (res as { data?: { modules?: Record<string, { can_view?: boolean }> } })?.data?.modules ?? {};
-        setMyPerms(modules);
+        const normalized: Record<string, { can_view: boolean }> = Object.fromEntries(
+          Object.entries(modules).map(([k, v]) => [k, { can_view: !!v?.can_view }]),
+        );
+        setMyPerms(normalized);
       })
       .catch(() => { /* non-critical — employee will see no modules until perms assigned */ });
   }, [isAdmin]);

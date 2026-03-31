@@ -1,5 +1,5 @@
 import axiosInstance from './axiosInstance';
-import type { User, PaginatedResponse } from '@/types';
+import type { User } from '@/types';
 
 export const userApi = {
   list: (params?: Record<string, string>): Promise<{ data: { users: User[]; count: number } }> =>

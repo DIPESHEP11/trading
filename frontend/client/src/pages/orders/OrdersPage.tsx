@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { ordersApi } from '@/api/businessApi';
 import type { Order } from '@/types';
 import toast from 'react-hot-toast';

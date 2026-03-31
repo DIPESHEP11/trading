@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { crmApi } from '@/api/crmApi';
-import type { Lead, LeadStatus, LeadSource } from '@/types';
+import type { Lead, LeadStatus } from '@/types';
 import toast from 'react-hot-toast';
 
 const STATUS_LABELS: Record<LeadStatus, string> = {

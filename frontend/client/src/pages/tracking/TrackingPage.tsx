@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { trackingApi, invoicesApi } from '@/api/businessApi';
 import type { TrackingPartner } from '@/api/businessApi';
 import type { DispatchSticker } from '@/types';

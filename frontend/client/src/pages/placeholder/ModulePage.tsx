@@ -1,4 +1,3 @@
-import React from 'react';
 import { useParams } from 'react-router-dom';
 
 const MODULE_INFO: Record<string, { icon: string; label: string; desc: string }> = {

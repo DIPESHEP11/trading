@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { ordersApi } from '@/api/businessApi';
-import type { Order, OrderStatus } from '@/types';
+import type { Order } from '@/types';
 import toast from 'react-hot-toast';
 
 const STATUS_COLORS: Record<string, string> = {

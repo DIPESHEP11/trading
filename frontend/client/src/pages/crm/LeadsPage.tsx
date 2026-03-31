@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent, type FormEvent } from 'react';
 import { crmApi } from '@/api/crmApi';
 import { restrictTo10Digits } from '@/utils/phone';
 import type { BulkAssignType, BulkAssignEmployee } from '@/api/crmApi';
 import { hrApi } from '@/api/hrApi';
 import { useAuthStore } from '@/store/authStore';
-import type { Lead, LeadFormSchema, LeadFormField } from '@/types';
+import type { Lead, LeadFormSchema, LeadFormField, LeadSource, LeadStatus } from '@/types';
 import toast from 'react-hot-toast';
 
 interface CStatus { id: number; key: string; label: string; color: string; order: number; is_active: boolean }
@@ -19,11 +19,10 @@ const FIELD_TYPES: { value: LeadFormField['type']; label: string }[] = [
 ];
 
 // ─── Extended Lead type (includes customer + assigned fields) ─────────────────
-interface LeadRow extends Lead {
+type LeadRow = Lead & {
   customer_id?: number | null;
   customer_name?: string | null;
-  assigned_to_name?: string | null;
-}
+};
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function LeadsPage() {
@@ -66,7 +65,6 @@ export default function LeadsPage() {
   const [addLeadModalOpen, setAddLeadModalOpen] = useState(false);
   const [addLeadSaving, setAddLeadSaving]       = useState(false);
   const [addLeadSchemaData, setAddLeadSchemaData] = useState<Record<string, string>>({});
-  const [allCustomers, setAllCustomers] = useState<{ id: number; first_name: string; last_name: string }[]>([]);
 
   // ── Import ──
   const [importing, setImporting]   = useState(false);
@@ -131,19 +129,6 @@ export default function LeadsPage() {
   const openBulkModal = async () => {
     await loadEmployees();
     setBulkModal(true);
-  };
-
-  const loadCustomers = async () => {
-    if (allCustomers.length) return;
-    try {
-      const res = await crmApi.customers.list();
-      const list = (res as { data?: { customers?: { id: number; first_name?: string; last_name?: string }[] } })?.data?.customers ?? [];
-      setAllCustomers(list.map((c) => ({
-        id: c.id,
-        first_name: c.first_name ?? '',
-        last_name: c.last_name ?? '',
-      })));
-    } catch { /* ignore */ }
   };
 
   const openAddLeadModal = () => {
@@ -227,7 +212,7 @@ export default function LeadsPage() {
   };
 
   // ── Status change ──
-  const handleStatusChange = async (leadId: number, newStatus: string) => {
+  const handleStatusChange = async (leadId: number, newStatus: LeadStatus) => {
     try {
       const res = await crmApi.leads.update(leadId, { status: newStatus });
       const flowResult = res?.data?.flow_result;
@@ -270,7 +255,7 @@ export default function LeadsPage() {
     try { await crmApi.leadFormSchema.downloadTemplate(); toast.success('Template downloaded.'); }
     catch { toast.error('Failed to download template.'); }
   };
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setImporting(true);
@@ -318,7 +303,6 @@ export default function LeadsPage() {
     setSchemaFields((prev) => prev.filter((_, i) => i !== idx));
 
   const extractLeadFromSchema = (data: Record<string, string>) => {
-    const coreKeys = ['name', 'phone', 'email', 'company', 'source'];
     const custom: Record<string, string> = {};
     let name = '';
     let email = '';
@@ -342,14 +326,14 @@ export default function LeadsPage() {
       email: email || undefined,
       phone: phone || undefined,
       company: company || undefined,
-      source,
-      status,
+      source: source as LeadSource,
+      status: status as LeadStatus,
       custom_data: Object.keys(custom).length ? custom : undefined,
     };
   };
 
   // ── Add lead (schema fields only) ──
-  const handleAddLeadSubmit = async (e: React.FormEvent) => {
+  const handleAddLeadSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const data: Record<string, string> = {};
     for (const [key, val] of Object.entries(addLeadSchemaData)) {
@@ -561,7 +545,7 @@ export default function LeadsPage() {
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         <button className="btn btn-primary btn-sm" onClick={() => handleViewLead(lead.id)}>More Details</button>
                         <select className="form-select" style={{ fontSize: 12, padding: '4px 8px', width: 'auto' }}
-                          value={lead.status} onChange={(e) => handleStatusChange(lead.id, e.target.value)}>
+                          value={lead.status} onChange={(e) => handleStatusChange(lead.id, e.target.value as LeadStatus)}>
                           {customStatuses.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                         </select>
                       </div>

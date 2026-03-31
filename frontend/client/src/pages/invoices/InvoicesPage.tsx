@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { invoicesApi } from '@/api/businessApi';
 import { restrictTo10Digits } from '@/utils/phone';
 import LeadDetailsCard from '@/components/LeadDetailsCard';
@@ -361,11 +361,8 @@ export default function InvoicesPage() {
   };
 
   const getStatusColor = (key: string) => statuses.find((s) => s.key === key)?.color || '#64748b';
-  const getStatusLabel = (key: string) => statuses.find((s) => s.key === key)?.label || key;
   const activeStatuses = statuses.filter((s) => s.is_active);
   const topStatuses = activeStatuses.slice(0, 5);
-
-  const getStateName = (code: string) => states.find((s) => s.code === code)?.name || code;
 
   const typeLabel = (t: string) => {
     const map: Record<string, string> = {

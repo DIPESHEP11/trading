@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { stockApi, productsApi, configApi } from '@/api/businessApi';
 import { restrictTo10Digits } from '@/utils/phone';
 import type { Warehouse, WarehouseCustomField, Product, TenantConfig } from '@/types';
@@ -63,6 +63,7 @@ const EMPTY_FORM: WhForm = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function InventorySettingsPage() {
+  void FEATURES;
   const [tab, setTab] = useState<'warehouses' | 'limits' | 'statuses' | 'flow'>('warehouses');
 
   // ── Warehouse state ──────────────────────────────────────────────────────
@@ -327,9 +328,6 @@ export default function InventorySettingsPage() {
     w.code.toLowerCase().includes(search.toLowerCase()) ||
     (w.city || '').toLowerCase().includes(search.toLowerCase())
   );
-
-  const _liveCount = FEATURES.flatMap((s) => s.items).filter((f) => f.status === 'live').length;
-  const _totalCount = FEATURES.flatMap((s) => s.items).length;
 
   return (
     <>

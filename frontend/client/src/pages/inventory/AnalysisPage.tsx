@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { stockApi } from '@/api/businessApi';
 import type { StockMovement } from '@/types';
 import toast from 'react-hot-toast';

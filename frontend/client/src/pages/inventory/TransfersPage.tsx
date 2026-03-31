@@ -145,12 +145,6 @@ export default function TransfersPage() {
   const selectedRecords = prod
     ? records.filter((r) => r.product === prod.id)
     : [];
-  const totalStock = selectedRecords.reduce((s, r) => s + intQty(r.quantity), 0);
-  const productTransfers = prod
-    ? transfers.filter((t) => t.product === prod.id)
-    : [];
-  const totalTransferred = productTransfers.reduce((s, t) => s + intQty(t.quantity), 0);
-
   // Stock at selected "From Warehouse"
   const fromRecord = (prod && fromWh)
     ? selectedRecords.find((r) => r.warehouse === fromWh.id)

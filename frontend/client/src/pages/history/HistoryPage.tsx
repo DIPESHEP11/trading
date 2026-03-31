@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { historyApi } from '@/api/businessApi';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -37,7 +37,6 @@ export default function HistoryPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const printRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -100,7 +99,7 @@ export default function HistoryPage() {
             </tr>
           </thead>
           <tbody>
-            ${items.map((h) => `
+            ${items.map((h: HistoryEntry) => `
               <tr>
                 <td>${h.created_at ? format(new Date(h.created_at), 'yyyy-MM-dd HH:mm') : '—'}</td>
                 <td>${h.module}</td>

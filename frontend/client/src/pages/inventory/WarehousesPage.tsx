@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { stockApi } from '@/api/businessApi';
 import type { Warehouse } from '@/types';
 import toast from 'react-hot-toast';
@@ -26,7 +26,7 @@ export default function WarehousesPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    const params = showInactive ? { all: 'true' } : {};
+    const params: Record<string, string> | undefined = showInactive ? { all: 'true' } : undefined;
     stockApi.warehouses(params)
       .then((r) => setWarehouses(r.data?.warehouses || []))
       .catch(() => toast.error('Failed to load warehouses.'))

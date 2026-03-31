@@ -344,7 +344,6 @@ export default function StockLevelsPage() {
                   const avail = parseFloat(String(r.available_quantity ?? 0));
                   const threshold = r.low_stock_threshold ?? 10;
                   const st = getStatus(avail, threshold);
-                  const retQty = parseFloat(String(r.returned_quantity ?? 0));
                   return (
                     <tr key={r.id} style={isReturnedView ? { background: '#eff6ff' } : st === 'low_stock' ? { background: '#fffbeb' } : st === 'out_of_stock' ? { background: '#fef2f2' } : undefined}>
                       <td><strong>{r.product_name}</strong></td>

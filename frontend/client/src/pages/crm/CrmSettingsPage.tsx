@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { crmApi } from '@/api/crmApi';
 import type { BulkAssignType, BulkAssignEmployee } from '@/api/crmApi';
 import { hrApi } from '@/api/hrApi';
 import { configApi } from '@/api/businessApi';
-import type { LeadFormSchema, LeadFormField, CrmPhoneRegexPreset } from '@/types';
+import type { LeadFormField, CrmPhoneRegexPreset } from '@/types';
 import toast from 'react-hot-toast';
 
 const DEFAULT_LEAD_FIELDS: LeadFormField[] = [
@@ -62,7 +62,6 @@ export default function CrmSettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('form');
 
   // ── Form Format ──
-  const [schema, setSchema]           = useState<LeadFormSchema | null>(null);
   const [schemaFields, setSchemaFields] = useState<LeadFormField[]>([]);
   /** Raw string for dropdown options — allows typing commas; parsed on blur */
   const [optionsRaw, setOptionsRaw] = useState<Record<number, string>>({});
@@ -113,7 +112,6 @@ export default function CrmSettingsPage() {
       .then((r) => {
         const d = r?.data?.data ?? r?.data;
         if (d) {
-          setSchema(d);
           setSchemaFields(d.custom_fields ?? d.fields ?? []);
           setPhoneRegexPresets(Array.isArray(d.phone_regex_presets) ? d.phone_regex_presets : []);
           if (Array.isArray(d.default_fields) && d.default_fields.length) {
@@ -161,7 +159,7 @@ export default function CrmSettingsPage() {
           setUseUnassigned(prefs.filter_unassigned);
         }
         if (Array.isArray(prefs.employees) && prefs.employees.length && emps.length) {
-          const byId = new Map(emps.map((e) => [e.user_id, e.name]));
+          const byId = new Map(emps.map((e: { user_id: number; name: string }) => [e.user_id, e.name]));
           const picked = prefs.employees
             .map((row) => {
               const name = byId.get(row.user_id);
@@ -300,7 +298,6 @@ export default function CrmSettingsPage() {
       });
       const d = (res as any)?.data ?? res;
       if (d) {
-        setSchema(d);
         if (Array.isArray(d.phone_regex_presets)) setPhoneRegexPresets(d.phone_regex_presets);
         if (Array.isArray(d.default_fields) && d.default_fields.length) {
           setEditedDefaults(

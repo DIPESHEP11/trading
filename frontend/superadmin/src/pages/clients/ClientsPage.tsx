@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clientApi } from '@/api/clientApi';
 import toast from 'react-hot-toast';

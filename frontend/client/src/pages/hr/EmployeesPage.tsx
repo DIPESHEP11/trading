@@ -77,8 +77,6 @@ export default function EmployeesPage() {
 
   // View popup
   const [viewEmployee, setViewEmployee] = useState<Employee | null>(null);
-  const [sendingResetLink, setSendingResetLink] = useState(false);
-
   // Add / Edit modal
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);

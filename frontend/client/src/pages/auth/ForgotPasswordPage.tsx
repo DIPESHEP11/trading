@@ -1,4 +1,4 @@
-import React, { useState, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { authApi } from '@/api/authApi';
 import toast from 'react-hot-toast';
