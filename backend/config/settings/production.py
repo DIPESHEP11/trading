@@ -6,7 +6,13 @@ DEBUG = False
 
 # ✅ Hosts (IMPORTANT for tenants)
 ALLOWED_HOSTS = [
-    "*",
+    # "*",
+    'trade.zitrapps.com', 
+    'www.trade.zitrapps.com', 
+    '127.0.0.1', 
+    'localhost',
+    '*.trade.zitrapps.com', 
+
 ]
 
 # ✅ Frontend domain
@@ -17,19 +23,19 @@ FRONTEND_CLIENT_URL = "https://trading.zitrapps.com"
 CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOWED_ORIGINS = [
-"https://trading.zitrapps.com",
+"https://trade.zitrapps.com",
 #     "*",
 ]
 
 # ✅ Allow all tenant subdomains
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.trading\.zitrapps\.com$",
+    r"^https://.*\.trade\.zitrapps\.com$",
 ]
 
 # ✅ CSRF
 CSRF_TRUSTED_ORIGINS = [
-    "https://trading.zitrapps.com",
-    "https://*.trading.zitrapps.com",
+    "https://trade.zitrapps.com",
+    "https://*.trade.zitrapps.com",
 ]
 
 # ✅ Security
