@@ -9,6 +9,7 @@ ALLOWED_HOSTS = [
     # "*",
     'trade.zitrapps.com', 
     'www.trade.zitrapps.com', 
+    'trading.zitrapps.com',
     '127.0.0.1', 
     'localhost',
     '*.trade.zitrapps.com', 
@@ -16,7 +17,7 @@ ALLOWED_HOSTS = [
 ]
 
 # ✅ Frontend domain
-FRONTEND_CLIENT_URL = "https://trading.zitrapps.com"
+FRONTEND_CLIENT_URL = "https://trade.zitrapps.com"
 
 # ✅ CORS (frontend → backend)
 # CORS_ALLOW_ALL_ORIGINS = false
