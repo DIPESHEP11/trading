@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => {
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq, req) => {
               // /api/v1/tenants/domains/ must hit public schema (Domain is shared)
-              const path = (req.url || req.path || '').split('?')[0]
+              const path = (req.url || (req as any).path || '').split('?')[0]
               if (path.includes('/tenants/domains')) {
                 proxyReq.setHeader('Host', 'localhost')
                 return
