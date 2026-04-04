@@ -2,6 +2,20 @@ import axiosInstance from './axiosInstance';
 import type { User } from '@/types';
 
 export const userApi = {
+  /** Platform super admins only — requires logged-in super_admin */
+  platformSuperAdmins: {
+    list: (): Promise<{ data: { users: User[]; count: number } }> =>
+      axiosInstance.get('/users/platform-superadmins/').then((r) => r.data),
+    create: (payload: {
+      email: string;
+      password: string;
+      password_confirm: string;
+      first_name?: string;
+      last_name?: string;
+    }): Promise<{ data: User; message?: string }> =>
+      axiosInstance.post('/users/platform-superadmins/', payload).then((r) => r.data),
+  },
+
   list: (params?: Record<string, string>): Promise<{ data: { users: User[]; count: number } }> =>
     axiosInstance.get('/users/', { params }).then((r) => r.data),
 

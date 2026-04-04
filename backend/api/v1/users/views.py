@@ -1,9 +1,14 @@
 from rest_framework import generics, status
 from rest_framework.views import APIView
-from apps.users.models import User
-from apps.core.permissions import IsTenantAdmin
+from apps.users.models import User, UserRole
+from apps.core.permissions import IsTenantAdmin, IsSuperAdmin
 from apps.core.responses import success_response, error_response
-from .serializers import UserListSerializer, UserDetailSerializer, UserUpdateSerializer
+from .serializers import (
+    UserListSerializer,
+    UserDetailSerializer,
+    UserUpdateSerializer,
+    PlatformSuperAdminCreateSerializer,
+)
 
 
 class UserListView(generics.ListAPIView):
@@ -62,3 +67,27 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         user.is_active = False
         user.save()
         return success_response(message='User deactivated.')
+
+
+class PlatformSuperAdminListCreateView(APIView):
+    """
+    GET POST /api/v1/users/platform-superadmins/
+    List or create platform super admin accounts (IsSuperAdmin only).
+    Tenant admins cannot access this.
+    """
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        users = User.objects.filter(role=UserRole.SUPER_ADMIN).order_by('-date_joined')
+        data = UserListSerializer(users, many=True).data
+        return success_response(data={'users': data, 'count': len(data)})
+
+    def post(self, request):
+        serializer = PlatformSuperAdminCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return success_response(
+            data=UserListSerializer(user).data,
+            message='Platform super admin created.',
+            http_status=status.HTTP_201_CREATED,
+        )

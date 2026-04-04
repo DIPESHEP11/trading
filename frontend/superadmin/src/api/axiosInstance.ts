@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://trading.zitrapps.com/api/v1';
+// Default to local API in dev (use localhost, not 127.0.0.1 — django-tenants Domain must match Host).
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,

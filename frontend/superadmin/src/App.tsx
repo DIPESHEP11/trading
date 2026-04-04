@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from '@/store/authStore';
@@ -24,6 +24,7 @@ import PlansPage from '@/pages/plans/PlansPage';
 
 // Client Admins (Superadmin)
 import ClientAdminsPage from '@/pages/users/ClientAdminsPage';
+import PlatformSuperAdminsPage from '@/pages/users/PlatformSuperAdminsPage';
 import SettingsPage from '@/pages/settings/SettingsPage';
 
 // ─── Auth Guards ────────────────────────────────────────────────────────────
@@ -33,10 +34,13 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    axiosInstance.get('/auth/me/').catch(() => {
-      logout();
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
+    axiosInstance.get('/auth/me/').catch((err: { response?: { status?: number } }) => {
+      // Only clear session when the server rejects the token — not on network/CORS/offline errors.
+      if (err?.response?.status === 401) {
+        logout();
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+      }
     });
   }, [isAuthenticated, logout]);
 
@@ -46,6 +50,25 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   return isAuthenticated ? <Navigate to="/dashboard" replace /> : <>{children}</>;
+}
+
+/** Wait for zustand persist to rehydrate from localStorage before auth redirects (avoids login ↔ dashboard flash). */
+function PersistGate({ children }: { children: React.ReactNode }) {
+  const [hydrated, setHydrated] = useState(() => useAuthStore.persist.hasHydrated());
+  useEffect(() => {
+    if (hydrated) return undefined;
+    const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true));
+    if (useAuthStore.persist.hasHydrated()) setHydrated(true);
+    return unsub;
+  }, [hydrated]);
+  if (!hydrated) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh', color: '#64748b' }}>
+        Loading…
+      </div>
+    );
+  }
+  return <>{children}</>;
 }
 
 export default function App() {
@@ -61,6 +84,7 @@ export default function App() {
           },
         }}
       />
+      <PersistGate>
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
@@ -84,6 +108,9 @@ export default function App() {
                   {/* Plans */}
                   <Route path="plans" element={<PlansPage />} />
 
+                  {/* Platform super admins (this portal) */}
+                  <Route path="platform-superadmins" element={<PlatformSuperAdminsPage />} />
+
                   {/* Client Admins */}
                   <Route path="users" element={<ClientAdminsPage />} />
 
@@ -101,6 +128,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+      </PersistGate>
     </BrowserRouter>
   );
 }

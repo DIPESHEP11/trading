@@ -30,6 +30,7 @@ const navSections: NavSection[] = [
   {
     label: 'Admin',
     items: [
+      { to: '/dashboard/platform-superadmins', label: 'Platform Super Admins', icon: '🛡️' },
       { to: '/dashboard/users', label: 'Client Admins', icon: '👥' },
       { to: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
     ],

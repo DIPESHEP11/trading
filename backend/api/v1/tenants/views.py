@@ -297,10 +297,13 @@ class AssignAdminToTenantView(APIView):
             return error_response(message='Client not found.', http_status=status.HTTP_404_NOT_FOUND)
         if tenant.schema_name == 'public':
             return error_response(message='Cannot assign admin to public schema.', http_status=status.HTTP_400_BAD_REQUEST)
-        data = request.data
-        if isinstance(data, dict) and any(str(k).startswith('admin.') for k in (data.keys() or [])):
-            normalized = _normalize_register_data(data)
-            data = normalized.get('admin') or data
+        # Multipart form uses QueryDict — it is NOT isinstance(..., dict), so we must still flatten admin.* keys.
+        raw = request.data
+        if any(str(k).startswith(('admin.', 'admin[')) for k in raw.keys()):
+            normalized = _normalize_register_data(raw)
+            data = normalized.get('admin') or {}
+        else:
+            data = raw
         serializer = TenantAdminUserSerializer(data=data)
         if not serializer.is_valid():
             return error_response(

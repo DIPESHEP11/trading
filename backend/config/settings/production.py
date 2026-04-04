@@ -33,6 +33,15 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.trade\.zitrapps\.com$",
 ]
 
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'authorization',
+    'content-type',
+    'origin',
+    'x-requested-with',
+]
+
 # ✅ CSRF
 CSRF_TRUSTED_ORIGINS = [
     "https://trade.zitrapps.com",
@@ -55,7 +64,12 @@ USE_X_FORWARDED_HOST = True
 STATIC_ROOT = "/home/omadmin/hef/trading/backend/static/"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
-MIDDLEWARE = ["whitenoise.middleware.WhiteNoiseMiddleware"] + MIDDLEWARE
+# Insert WhiteNoise AFTER SecurityMiddleware (index 2 in base list)
+# but NEVER before CorsMiddleware, to avoid breaking CORS preflight.
+MIDDLEWARE.insert(
+    MIDDLEWARE.index('django.middleware.security.SecurityMiddleware') + 1,
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+)
 
 # ✅ Sentry
 SENTRY_DSN = config("SENTRY_DSN", default="")
