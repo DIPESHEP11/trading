@@ -1,8 +1,9 @@
 from rest_framework import generics, status
+from rest_framework.views import APIView
 from apps.products.models import Product, Category
 from apps.core.responses import success_response, error_response
 from apps.core.permissions import IsStaffOrAbove, IsTenantAdmin
-from .serializers import ProductSerializer, ProductListSerializer, CategorySerializer
+from .serializers import ProductSerializer, ProductListSerializer, CategorySerializer, CategoryTreeSerializer
 
 
 class CategoryListCreateView(generics.ListCreateAPIView):
@@ -43,6 +44,21 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         cat.is_active = False
         cat.save()
         return success_response(message='Category deactivated.')
+
+
+class CategoryTreeView(APIView):
+    """
+    GET /api/v1/products/categories/tree/
+    Returns the full category tree with nested children.
+    Root nodes (no parent) are returned; each has a 'children' list recursively.
+    """
+    permission_classes = [IsStaffOrAbove]
+
+    def get(self, request):
+        # Only top-level (root) nodes — children are nested inside
+        roots = Category.objects.filter(parent__isnull=True, is_active=True)
+        data = CategoryTreeSerializer(roots, many=True).data
+        return success_response(data={'tree': data})
 
 
 class ProductListCreateView(generics.ListCreateAPIView):

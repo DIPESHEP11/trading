@@ -4,6 +4,11 @@ from decouple import config
 
 DEBUG = False
 
+# Central API hostname (e.g. trading.zitrapps.com) should have a Domain row, or we fall back to
+# public schema routing so /api/ keeps working and CORS preflight is not lost on tenant 404.
+SHOW_PUBLIC_IF_NO_TENANT_FOUND = True
+PUBLIC_SCHEMA_URLCONF = ROOT_URLCONF
+
 # ✅ Hosts (IMPORTANT for tenants)
 ALLOWED_HOSTS = [
     # "*",
@@ -19,18 +24,19 @@ ALLOWED_HOSTS = [
 # ✅ Frontend domain
 FRONTEND_CLIENT_URL = "https://trade.zitrapps.com"
 
-# ✅ CORS (frontend → backend)
-# CORS_ALLOW_ALL_ORIGINS = false
-CORS_ALLOW_ALL_ORIGINS = True
+# ✅ CORS (frontend on *.trade.zitrapps.com → API on trading.zitrapps.com)
+# Cannot use Access-Control-Allow-Origin: * with credentials; use an explicit allow-list + regex.
+CORS_ALLOW_ALL_ORIGINS = False
 
 CORS_ALLOWED_ORIGINS = [
-"https://trade.zitrapps.com",
-#     "*",
+    'https://trade.zitrapps.com',
+    'https://www.trade.zitrapps.com',
+    'https://trading.zitrapps.com',
 ]
 
-# ✅ Allow all tenant subdomains
+# Tenant client sites (e.g. https://aaaa.trade.zitrapps.com)
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.trade\.zitrapps\.com$",
+    r"^https://[a-z0-9-]+\.trade\.zitrapps\.com$",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -42,10 +48,20 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# ✅ CSRF
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# ✅ CSRF (Django does not expand wildcards; use regex via customisation or list real hosts)
 CSRF_TRUSTED_ORIGINS = [
-    "https://trade.zitrapps.com",
-    "https://*.trade.zitrapps.com",
+    'https://trade.zitrapps.com',
+    'https://www.trade.zitrapps.com',
+    'https://trading.zitrapps.com',
 ]
 
 # ✅ Security

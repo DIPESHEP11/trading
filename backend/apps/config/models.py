@@ -30,7 +30,8 @@ class TenantConfig(TimeStampedModel):
     module_analytics = models.BooleanField(default=True)
 
     # ── Branding ──────────────────────────────────────────────────────────────
-    theme_color = models.CharField(max_length=20, default='#2563eb')
+    theme_color = models.CharField(max_length=20, default='#0f172a')
+    use_default_theme = models.BooleanField(default=True)
     logo = models.ImageField(upload_to='tenant_logos/', null=True, blank=True)
     company_name_override = models.CharField(max_length=200, blank=True)
 
@@ -80,7 +81,8 @@ class TenantConfig(TimeStampedModel):
             'contact_email': self.tenant.contact_email,
             'domain': domain_name,
             'theme_color': self.theme_color,
-            'logo': self.logo.url if self.logo else None,
+            'use_default_theme': self.use_default_theme,
+            'logo': (self.logo.url if self.logo else None) or (self.tenant.logo.url if self.tenant.logo else None),
             'currency': self.currency,
             'timezone': self.timezone,
             'order_requires_approval': self.order_requires_approval,

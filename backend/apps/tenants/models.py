@@ -25,6 +25,8 @@ class Tenant(TenantMixin):
     description = models.TextField(blank=True)
     logo = models.ImageField(upload_to='tenant_logos/', null=True, blank=True)
     contact_email = models.EmailField(blank=True)
+    theme_color = models.CharField(max_length=20, default='#0f172a', help_text='Sidebar branding color')
+    use_default_theme = models.BooleanField(default=True)
 
     is_active = models.BooleanField(default=True)
     plan = models.CharField(

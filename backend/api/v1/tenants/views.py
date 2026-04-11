@@ -229,6 +229,8 @@ class RegisterClientView(APIView):
             description=data.get('description', ''),
             logo=data.get('logo'),
             contact_email=data.get('contact_email', ''),
+            theme_color=data.get('theme_color', '#0f172a'),
+            use_default_theme=data.get('use_default_theme', True),
             plan=data.get('plan', 'basic'),
             business_model=data.get('business_model', 'b2b'),
             module_crm=data.get('module_crm', True),

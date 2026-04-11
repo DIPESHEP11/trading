@@ -142,12 +142,14 @@ class ModuleHistoryExportView(APIView):
             buffer = BytesIO()
             wb.save(buffer)
             buffer.seek(0)
-            fname = f'module_history_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+            
+            fname = f'module_history_{timezone.now().strftime("%Y%m%d_%H%M")}.xlsx'
             response = HttpResponse(
                 buffer.getvalue(),
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             )
             response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            response['Access-Control-Expose-Headers'] = 'Content-Disposition'
             return response
 
         return success_response(data={'history': data})

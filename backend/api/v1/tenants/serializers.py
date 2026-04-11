@@ -13,7 +13,7 @@ class TenantSerializer(serializers.ModelSerializer):
         model = Tenant
         fields = [
             'id', 'name', 'slug', 'subtitle', 'description', 'logo', 'logo_url',
-            'contact_email', 'plan', 'business_model', 'is_active',
+            'contact_email', 'theme_color', 'use_default_theme', 'plan', 'business_model', 'is_active',
             'module_crm', 'module_products', 'module_stock', 'module_orders',
             'module_warehouse', 'module_invoices', 'module_dispatch',
             'module_tracking', 'module_manufacturing', 'module_hr', 'module_analytics',
@@ -57,13 +57,14 @@ class TenantSerializer(serializers.ModelSerializer):
             'module_warehouse', 'module_invoices', 'module_dispatch',
             'module_tracking', 'module_manufacturing', 'module_hr', 'module_analytics',
         ]
-        updated_modules = {f: validated_data[f] for f in MODULE_FIELDS if f in validated_data}
-        if updated_modules:
+        SYNCED_FIELDS = MODULE_FIELDS + ['theme_color', 'use_default_theme']
+        updated_sync_fields = {f: validated_data[f] for f in SYNCED_FIELDS if f in validated_data}
+        if updated_sync_fields:
             from django_tenants.utils import schema_context
             from apps.config.models import TenantConfig
             with schema_context(instance.schema_name):
                 config, _ = TenantConfig.objects.get_or_create(tenant=instance)
-                for field, value in updated_modules.items():
+                for field, value in updated_sync_fields.items():
                     setattr(config, field, value)
                 config.save()
 
@@ -98,6 +99,8 @@ class RegisterClientSerializer(serializers.Serializer):
     description = serializers.CharField(required=False, allow_blank=True, default='')
     logo = serializers.ImageField(required=False, allow_null=True)
     contact_email = serializers.EmailField(required=False, allow_blank=True, default='')
+    theme_color = serializers.CharField(max_length=20, required=False, default='#0f172a')
+    use_default_theme = serializers.BooleanField(required=False, default=True)
 
     # Plan & Business Model — accepts any slug (plans are managed dynamically)
     plan = serializers.CharField(max_length=50, required=False, allow_blank=True, default='')

@@ -183,6 +183,12 @@ class InventoryApproval(TimeStampedModel):
     items = models.JSONField(default=list,
         help_text='[{"product_id":1,"product_name":"...","quantity":5,"notes":""},...]')
 
+    # Full snapshot of upstream custom data — leads custom_data, order extra fields, etc.
+    extra_data = models.JSONField(
+        default=dict, blank=True,
+        help_text='Full snapshot of upstream data from source module (lead custom fields, order data, etc.).',
+    )
+
     notes = models.TextField(blank=True)
     rejection_reason = models.TextField(blank=True)
 

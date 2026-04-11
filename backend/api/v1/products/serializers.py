@@ -2,6 +2,19 @@ from rest_framework import serializers
 from apps.products.models import Product, Category
 
 
+class CategoryTreeSerializer(serializers.ModelSerializer):
+    """Recursive serializer — children are serialized as nested objects."""
+    children = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'description', 'parent', 'is_active', 'unit', 'custom_fields', 'children']
+
+    def get_children(self, obj):
+        qs = obj.children.filter(is_active=True)
+        return CategoryTreeSerializer(qs, many=True).data
+
+
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category

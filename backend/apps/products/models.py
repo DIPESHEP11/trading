@@ -7,6 +7,7 @@ class Category(TimeStampedModel):
     parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='children')
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    unit = models.CharField(max_length=50, blank=True, null=True)
     custom_fields = models.JSONField(
         default=list, blank=True,
         help_text='List of field definitions for products in this category. '
@@ -37,6 +38,7 @@ class Product(TimeStampedModel):
     image = models.ImageField(upload_to='products/', null=True, blank=True)
 
     is_active = models.BooleanField(default=True)
+    unit = models.CharField(max_length=50, blank=True, null=True)
     low_stock_threshold = models.PositiveIntegerField(default=10)
     custom_data = models.JSONField(
         default=dict, blank=True,

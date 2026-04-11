@@ -75,16 +75,58 @@ def _execute_order_flow(order, user):
                 'product_id': oi.product_id,
                 'product_name': oi.product.name,
                 'quantity': float(oi.quantity),
+                'unit_price': str(oi.unit_price),
+                'total_price': str(oi.total_price),
                 'notes': f'₹{oi.unit_price}/unit',
             })
+        # Full upstream data snapshot
+        cust = order.customer
+        extra_data = {
+            'order_number': order.order_number,
+            'order_source': order.source,
+            'order_status': order.status,
+            'order_notes': order.notes,
+            'order_subtotal': str(order.subtotal),
+            'order_tax': str(order.tax_amount),
+            'order_discount': str(order.discount_amount),
+            'order_total': str(order.total_amount),
+            'shipping_name': order.shipping_name,
+            'shipping_phone': order.shipping_phone,
+            'shipping_address': order.shipping_address,
+            'shipping_city': order.shipping_city,
+            'shipping_state': order.shipping_state,
+            'shipping_pincode': order.shipping_pincode,
+            'customer_id': cust.id if cust else None,
+            'customer_name': cust.full_name if cust else '',
+            'customer_email': cust.email if cust else '',
+            'customer_phone': cust.phone if cust else '',
+            'customer_company': cust.company if cust else '',
+            'customer_address': cust.address if cust else '',
+            # If lead-sourced, pull lead's custom_data too
+            'lead_ref': order.external_id if order.external_id.startswith('lead-') else '',
+        }
+        # If this order was sourced from a lead, also include lead custom_data
+        if order.external_id and order.external_id.startswith('lead-'):
+            try:
+                from apps.crm.models import Lead
+                lead_id = int(order.external_id.split('-')[1])
+                lead = Lead.objects.get(pk=lead_id)
+                extra_data['lead_custom_data'] = lead.custom_data or {}
+                extra_data['lead_name'] = lead.name
+                extra_data['lead_email'] = lead.email
+                extra_data['lead_phone'] = lead.phone
+            except Exception:
+                pass
+
         InventoryApproval.objects.create(
             request_number=req_number,
             source_module='orders',
             source_reference=order.order_number,
             requested_action='stock_out',
             next_module='dispatch',
-            notes=f'Auto from order flow. Order: {order.order_number} — {order.shipping_name or (order.customer.full_name if order.customer else "Customer")} — Total: ₹{order.total_amount}',
+            notes=f'Auto from order flow. Order: {order.order_number} — {order.shipping_name or (cust.full_name if cust else "Customer")} — Total: ₹{order.total_amount}',
             items=order_items,
+            extra_data=extra_data,
             requested_by=user,
         )
         order.status = 'warehouse'
@@ -95,6 +137,7 @@ def _execute_order_flow(order, user):
         result['executed'] = True
         result['message'] = f'Inventory approval {req_number} created — awaiting warehouse approval.'
         return result
+
 
     if flow.action == 'create_invoice' and flow.target_module == 'invoices':
         # Create a real invoice/proforma from order so it appears in Invoice module.

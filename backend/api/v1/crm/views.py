@@ -152,12 +152,39 @@ def _execute_status_flow(lead, user):
             result['executed'] = True
             result['message'] = f'Order #{existing.order_number} already exists for this lead.'
             return result
+
+        # ── Collect ALL lead data ──────────────────────────────────────────
+        custom = lead.custom_data or {}
+        # Map common custom field names to order shipping fields
+        address = custom.get('address', '') or ''
+        city = custom.get('city', '') or ''
+        state = custom.get('state', '') or ''
+        pincode = custom.get('pincode', '') or custom.get('zip', '') or ''
+        shipping_address = address
+
+        # Build structured notes that carry ALL lead info
+        lead_data_summary = []
+        for k, v in custom.items():
+            if v and k not in ('address', 'city', 'state', 'pincode', 'zip'):
+                lead_data_summary.append(f'{k}: {v}')
+        custom_notes_str = '\n'.join(lead_data_summary) if lead_data_summary else ''
+        full_notes = (
+            f'Auto-created from lead #{lead.id} — {lead.name}'
+            + (f' | Company: {lead.company}' if lead.company else '')
+            + (f'\nLead notes: {lead.notes}' if lead.notes else '')
+            + (f'\nCustom fields:\n{custom_notes_str}' if custom_notes_str else '')
+        )
+
         order = Order.objects.create(
             source=lead.source or 'manual',
             customer=lead.customer,
             shipping_name=lead.name,
             shipping_phone=lead.phone or '',
-            notes=f'Auto-created from lead #{lead.id} — {lead.name}',
+            shipping_address=shipping_address,
+            shipping_city=city,
+            shipping_state=state,
+            shipping_pincode=pincode,
+            notes=full_notes,
             external_id=f'lead-{lead.id}',
             assigned_to=lead.assigned_to or user,
         )
@@ -188,6 +215,24 @@ def _execute_status_flow(lead, user):
                     'quantity': float(oi.quantity),
                     'notes': f'Lead: {lead.name} — ₹{oi.unit_price}/unit',
                 })
+            # Collect complete upstream context
+            extra_data = {
+                'lead_id': lead.id,
+                'lead_name': lead.name,
+                'lead_phone': lead.phone,
+                'lead_email': lead.email,
+                'lead_company': lead.company,
+                'lead_source': lead.source,
+                'lead_status': lead.status,
+                'lead_notes': lead.notes,
+                'lead_custom_data': lead.custom_data or {},
+                'order_number': order.order_number,
+                'order_shipping_name': order.shipping_name,
+                'order_shipping_phone': order.shipping_phone,
+                'order_shipping_address': order.shipping_address,
+                'order_total': str(order.total_amount),
+                'order_notes': order.notes,
+            }
             InventoryApproval.objects.create(
                 request_number=req_number,
                 source_module='crm',
@@ -196,6 +241,7 @@ def _execute_status_flow(lead, user):
                 next_module='dispatch',
                 notes=f'Auto from CRM lead. Lead: {lead.name} — Order: {order.order_number}',
                 items=order_items,
+                extra_data=extra_data,
                 requested_by=user,
                 lead=lead,
             )
@@ -390,7 +436,16 @@ class LeadFormPublicView(APIView):
                     f['type'] = 'select'
                     f['options'] = source_opts
                     break
-        return success_response(data={'fields': form_fields})
+        tenant_info = {}
+        if tenant:
+            from apps.config.models import TenantConfig
+            config = TenantConfig.objects.filter(tenant=tenant).first()
+            if config:
+                tenant_info = {
+                    'company_name': config.company_name_override or tenant.name,
+                    'logo': (config.logo.url if config.logo else None) or (tenant.logo.url if tenant.logo else None),
+                }
+        return success_response(data={'fields': form_fields, 'tenant_info': tenant_info})
 
 
 class LeadSubmitView(APIView):

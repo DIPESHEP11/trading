@@ -49,6 +49,7 @@ TENANT_APPS = [
     'apps.tracking',
     'apps.config',
     'apps.hr',
+    'apps.manufacturing',
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [app for app in TENANT_APPS if app not in SHARED_APPS]
@@ -60,8 +61,10 @@ TENANT_DOMAIN_MODEL = 'tenants.Domain'
 # MIDDLEWARE
 # ──────────────────────────────────────────────────────────────────────────────
 MIDDLEWARE = [
-    'django_tenants.middleware.main.TenantMainMiddleware',  # must be first
+    # CORS must run before tenant middleware so preflight + error responses always get
+    # Access-Control-Allow-Origin (tenant404/disallowed-host otherwise strips CORS for browsers).
     'corsheaders.middleware.CorsMiddleware',
+    'django_tenants.middleware.main.TenantMainMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -153,6 +156,9 @@ CORS_ALLOWED_ORIGINS = config(
     cast=lambda v: [s.strip() for s in v.split(',')]
 )
 CORS_ALLOW_CREDENTIALS = True
+
+# Apply CORS to API (explicit is safer than default ^.*$ if you add non-API routes later)
+CORS_URLS_REGEX = r"^/api/.*$"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # STATIC & MEDIA

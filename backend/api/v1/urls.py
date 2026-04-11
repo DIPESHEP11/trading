@@ -1,7 +1,3 @@
-"""
-API v1 master URL aggregator.
-All sub-module URLs are included here and routed from config/urls.py.
-"""
 from django.urls import path, include
 
 urlpatterns = [
@@ -24,11 +20,10 @@ urlpatterns = [
     path('invoices/', include('api.v1.invoices.urls')),
     path('tracking/', include('api.v1.tracking.urls')),
     path('hr/', include('api.v1.hr.urls')),
+    path('manufacturing/', include('apps.manufacturing.urls')),
 
     # ── Dashboard stats (tenant-scoped) ─────────────────────────────────
     path('dashboard/', include('api.v1.dashboard.urls')),
-
-
 
     # ── Subscription plans (superadmin-managed, public schema) ───────────
     path('plans/', include('api.v1.plans.urls')),
@@ -36,4 +31,3 @@ urlpatterns = [
     # ── External integrations ────────────────────────────────────────────
     path('integrations/', include('api.v1.integrations.urls')),
 ]
-
